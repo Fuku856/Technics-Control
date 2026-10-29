@@ -35,14 +35,25 @@ public sealed partial class DeviceService : ObservableObject
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan LevelPreviewInterval = TimeSpan.FromMilliseconds(500);
 
+    /// <summary>強さを変えてからこの間は、イヤホンから返ってくる同じモードの値（途中で送った値）で表示を戻さない。</summary>
+    private static readonly TimeSpan LevelEchoWindow = TimeSpan.FromMilliseconds(1500);
+
     private readonly DispatcherQueue _dispatcher;
     private readonly CancellationTokenSource _stop = new();
     private readonly SemaphoreSlim _wake = new(0);
+    // モードの切り替えと強さの確定は、確認と再送が入れ違わないよう 1 つずつ行う
+    private readonly SemaphoreSlim _outsideGate = new(1, 1);
     private TechnicsDevice? _device;
     private DateTime _lastLevelPreview = DateTime.MinValue;
     private int? _pendingLevel;
     private bool _previewScheduled;
     private UiMode? _requestedMode;
+    private bool _applyingMode;
+    private int _applyingCount;
+
+    // 画面から外音コントロールを変えるたびに増やす。読み直しの途中で変わったら、読んだ値は古いので使わない
+    private int _outsideVersion;
+    private DateTime _levelChangedAt = DateTime.MinValue;
 
     public DeviceService(DispatcherQueue dispatcher)
     {
@@ -63,7 +74,7 @@ public sealed partial class DeviceService : ObservableObject
     public partial OutsideControl? Outside { get; private set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Mode), nameof(ModeText))]
+    [NotifyPropertyChangedFor(nameof(Mode), nameof(Level), nameof(ModeText))]
     public partial AmbientSetting? Ambient { get; private set; }
 
     [ObservableProperty]
@@ -102,7 +113,8 @@ public sealed partial class DeviceService : ObservableObject
         _ => null,
     };
 
-    public int? Level => Outside?.CurrentLevel;
+    /// <summary>今のモードで調整できる強さ。OFF とアテンションには強さがないので null。</summary>
+    public int? Level => Mode == UiMode.Attention ? null : Outside?.CurrentLevel;
 
     public string ModeText => Mode is { } mode ? ModeName(mode) : "—";
 
@@ -217,12 +229,17 @@ public sealed partial class DeviceService : ObservableObject
     {
         await RunAsync(async device =>
         {
+            var version = _outsideVersion;
             var outside = await device.ReadBothAsync(role => device.GetOutsideControlAsync(role));
             var ambient = await device.ReadBothAsync(role => device.GetAmbientSettingAsync(role));
-            Outside = outside.Agent;
-            Ambient = ambient.Agent;
-            PartnerPresent = outside.PartnerPresent;
-            LeftRightMatch = outside.PartnerPresent ? outside.Matches && ambient.Matches : null;
+            // 読んでいるあいだに画面から変えていたら、読んだ値は古い（表示が一瞬戻ってしまう）。次の読み直しに任せる
+            if (version == _outsideVersion && !IsApplying && !IsAdjustingLevel)
+            {
+                Outside = outside.Agent;
+                Ambient = ambient.Agent;
+                PartnerPresent = outside.PartnerPresent;
+                LeftRightMatch = outside.PartnerPresent ? outside.Matches && ambient.Matches : null;
+            }
 
             var agent = await device.GetBatteryAsync(EarbudRole.Agent);
             int? partner = device.HasPartner ? (await device.GetBatteryAsync(EarbudRole.Partner)).Percent : null;
@@ -242,21 +259,31 @@ public sealed partial class DeviceService : ObservableObject
     public async Task SetModeAsync(UiMode mode)
     {
         _requestedMode = mode;
-        if (IsApplying)
+        if (_applyingMode)
             return;
-        IsApplying = true;
+        _applyingMode = true;
+        BeginApplying();
         try
         {
             while (_requestedMode is { } next)
             {
-                _requestedMode = null;
-                await ApplyModeAsync(next);
+                // 強さの確定中なら、終わってから切り替える
+                await _outsideGate.WaitAsync();
+                try
+                {
+                    _requestedMode = null;
+                    await ApplyModeAsync(next);
+                }
+                finally
+                {
+                    _outsideGate.Release();
+                }
             }
         }
         finally
         {
-            IsApplying = false;
-            DeviceStateChanged?.Invoke();
+            _applyingMode = false;
+            EndApplying();
         }
     }
 
@@ -267,6 +294,7 @@ public sealed partial class DeviceService : ObservableObject
     {
         if (Outside is not { } current || mode == Mode)
             return;
+        _outsideVersion++;
         await RunAsync(async device =>
             {
                 var matched = true;
@@ -313,10 +341,14 @@ public sealed partial class DeviceService : ObservableObject
     {
         await Task.Delay(delay);
         _previewScheduled = false;
-        if (_pendingLevel is not { } level || WithLevel(level) is not { } value)
+        // モードの切り替え中は送らない（前のモードで送ると切り替えが戻る）
+        if (_applyingMode || _pendingLevel is not { } level || WithLevel(level) is not { } value)
             return;
         _pendingLevel = null;
         _lastLevelPreview = DateTime.UtcNow;
+        // 送った値を今の値として扱う（あとから届く古い値や、モードの切り替えで強さが戻らないように）
+        Outside = value;
+        MarkLevelChanged();
         await RunAsync(async device =>
         {
             await device.SendOutsideControlAsync(value);
@@ -330,9 +362,16 @@ public sealed partial class DeviceService : ObservableObject
         _pendingLevel = null;
         if (WithLevel(level) is not { } value)
             return;
-        IsApplying = true;
+        if (!_applyingMode)
+            Outside = value;
+        MarkLevelChanged();
+        BeginApplying();
+        await _outsideGate.WaitAsync();
         try
         {
+            // 待っているあいだにモードが切り替わったら、前のモードの強さは送らない
+            if (Outside?.Mode != value.Mode)
+                return;
             await RunAsync(async device =>
             {
                 var result = await device.SetOutsideControlAsync(value);
@@ -344,13 +383,38 @@ public sealed partial class DeviceService : ObservableObject
         }
         finally
         {
-            IsApplying = false;
-            DeviceStateChanged?.Invoke();
+            _outsideGate.Release();
+            MarkLevelChanged();
+            EndApplying();
         }
+    }
+
+    private bool IsAdjustingLevel => DateTime.UtcNow - _levelChangedAt < LevelEchoWindow;
+
+    private void MarkLevelChanged()
+    {
+        _outsideVersion++;
+        _levelChangedAt = DateTime.UtcNow;
+    }
+
+    private void BeginApplying()
+    {
+        _applyingCount++;
+        IsApplying = true;
+    }
+
+    private void EndApplying()
+    {
+        if (--_applyingCount == 0)
+            IsApplying = false;
+        DeviceStateChanged?.Invoke();
     }
 
     private OutsideControl? WithLevel(int level)
     {
+        // アテンションは強さを調整できない
+        if (Mode == UiMode.Attention)
+            return null;
         var clamped = (byte)Math.Clamp(level, OutsideControl.MinLevel, OutsideControl.MaxLevel);
         return Outside?.Mode switch
         {
@@ -383,6 +447,10 @@ public sealed partial class DeviceService : ObservableObject
 
     private void OnOutsideChangedByDevice(OutsideControl value)
     {
+        // 強さを変えている途中に届く同じモードの通知は、途中で送った値が返ってきたもの。使うと表示が戻る
+        if (IsAdjustingLevel && value.Mode == Outside?.Mode)
+            return;
+        _outsideVersion++;
         Outside = value;
         // イヤホンのタッチ操作でも左右がずれていないか確かめる
         _wake.Release();
