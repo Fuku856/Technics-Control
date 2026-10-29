@@ -50,6 +50,17 @@ public sealed partial class MainWindow : Window
         Nav.SelectedItem = Nav.MenuItems[0];
     }
 
+    /// <summary>隠していても最小化していても、手前に出してフォーカスを移す。</summary>
+    public void BringToFront()
+    {
+        if (AppWindow.Presenter is OverlappedPresenter { State: OverlappedPresenterState.Minimized } presenter)
+            presenter.Restore();
+        AppWindow.Show();
+        Activate();
+        // Activate だけでは、ほかのアプリのウィンドウの後ろに残ることがある
+        NativeMethods.SetForegroundWindow(WinRT.Interop.WindowNative.GetWindowHandle(this));
+    }
+
     public void Navigate(string tag)
     {
         Nav.SelectedItem = Nav.MenuItems.OfType<NavigationViewItem>().First(i => (string)i.Tag == tag);
@@ -89,4 +100,8 @@ internal static class NativeMethods
 {
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     internal static extern uint GetDpiForWindow(nint hwnd);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    internal static extern bool SetForegroundWindow(nint hwnd);
 }
