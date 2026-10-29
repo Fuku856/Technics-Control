@@ -35,7 +35,7 @@ public partial class App : Application
 
     public MainWindow? MainWindow { get; private set; }
 
-    protected override void OnLaunched(LaunchActivatedEventArgs args)
+    protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
         var dispatcher = DispatcherQueue.GetForCurrentThread();
         Settings = SettingsStore.Load();
@@ -55,6 +55,8 @@ public partial class App : Application
         // 2 つ目の起動（スタートメニューから開き直したときなど）は、ウィンドウを開く要求として受け取る
         AppInstance.GetCurrent().Activated += (_, _) => dispatcher.TryEnqueue(ShowMainWindow);
 
+        // ホームの本体画像は、ウィンドウを出す前に読み込んでおく（出てから遅れて表示されないように）
+        await Assets.PreloadDeviceBitmapsAsync(Settings.BodyColor);
         if (!Environment.GetCommandLineArgs().Contains(StartupService.BackgroundArgument))
             ShowMainWindow();
     }
