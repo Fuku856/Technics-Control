@@ -102,11 +102,13 @@ public sealed partial class KeyCustomizePage : Page
         }
     }
 
+    // 左右の見出しは、下に並ぶ選択ボックスの中央に置く
     private static TextBlock Header(string text) => new()
     {
         Text = text,
-        Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-        HorizontalAlignment = HorizontalAlignment.Left,
+        Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
+        FontSize = 16,
+        HorizontalAlignment = HorizontalAlignment.Center,
     };
 
     private ComboBox CreateBox(KeySide side, Scene scene, KeyGesture gesture)
