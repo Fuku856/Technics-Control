@@ -1,3 +1,4 @@
+using Microsoft.UI.Xaml.Media.Imaging;
 using TechnicsControl.Core.Technics;
 
 namespace TechnicsControl.App.Services;
@@ -9,11 +10,48 @@ namespace TechnicsControl.App.Services;
 public static class Assets
 {
     private static readonly string Root = Path.Combine(AppContext.BaseDirectory, "Assets", "Official");
+    private static readonly Dictionary<Uri, BitmapImage> DeviceBitmaps = [];
 
     public static Uri Icon(string name) => new($"ms-appx:///Assets/Official/Icons/Dark/{name}.png");
 
-    public static Uri DeviceImage(BodyColor color, char part) =>
+    private static Uri DeviceImage(BodyColor color, char part) =>
         new($"ms-appx:///Assets/Official/Device/az80_{ColorCode(color)}_{part}.png");
+
+    /// <summary>本体の画像。一度読み込んだものを使い回す（UI スレッドで使う）。</summary>
+    public static BitmapImage DeviceBitmap(BodyColor color, char part)
+    {
+        var uri = DeviceImage(color, part);
+        if (!DeviceBitmaps.TryGetValue(uri, out var bitmap))
+        {
+            bitmap = new BitmapImage(uri);
+            DeviceBitmaps[uri] = bitmap;
+        }
+        return bitmap;
+    }
+
+    /// <summary>
+    /// 本体の画像を先に読み込んでおく。Image に初めて表示したときに読み込むと、ウィンドウが出てから画像が遅れて出るため。
+    /// </summary>
+    public static async Task PreloadDeviceBitmapsAsync(BodyColor color)
+    {
+        foreach (var part in "lrc")
+        {
+            var uri = DeviceImage(color, part);
+            if (DeviceBitmaps.ContainsKey(uri))
+                continue;
+            try
+            {
+                var bitmap = new BitmapImage();
+                using (var stream = File.OpenRead(Path.Combine(Root, "Device", Path.GetFileName(uri.LocalPath))).AsRandomAccessStream())
+                    await bitmap.SetSourceAsync(stream);
+                DeviceBitmaps[uri] = bitmap;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Runtime.InteropServices.COMException)
+            {
+                // 読めなければ、表示するときにふつうに読み込む
+            }
+        }
+    }
 
     public static string TrayIconPath(UiMode? mode, bool lightTaskbar) =>
         Path.Combine(Root, "Tray", $"{mode switch
