@@ -36,7 +36,7 @@ dotnet run --project src/TechnicsControl.App/TechnicsControl.App.csproj -p:Platf
 GitHub の Releases からリリースを手動で作成（公開）すると、[Release ワークフロー](.github/workflows/release.yml)がテスト・ビルドを行い、インストーラー（`TechnicsControl-<version>-setup-x64.exe`、[Inno Setup](installer/TechnicsControl.iss) 製）をそのリリースに添付します。
 
 - タグは SemVer 形式にします（例: `v1.2.0`）。
-- **`main`**: 通常リリースとして作成します。
+- **`dev` 以外のブランチ**（例: 今後作成する `main`）: 通常リリースになります。
 - **`dev`**: プレリリースとして使います。ターゲットを `dev` にしてリリースを作成すると、プレリリースのチェックが外れていても自動でプレリリースに変更されます（タグ例: `v1.3.0-beta.1`）。
 
 インストーラーはユーザー単位（`%LOCALAPPDATA%\Programs\TechnicsControl`）にインストールされ、管理者権限は不要です。
