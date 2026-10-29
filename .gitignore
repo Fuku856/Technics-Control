@@ -1,0 +1,9 @@
+# Build output
+bin/
+obj/
+*.user
+.vs/
+
+# Official app packages (large; extract assets with tools/AssetExtractor instead)
+*.apk
+*.xapk

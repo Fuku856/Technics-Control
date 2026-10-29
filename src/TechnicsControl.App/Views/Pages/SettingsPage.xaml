@@ -1,0 +1,175 @@
+<Page
+    x:Class="TechnicsControl.App.Views.Pages.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls">
+    <Page.Resources>
+        <Style x:Key="CategoryHeaderStyle" TargetType="TextBlock" BasedOn="{StaticResource BodyStrongTextBlockStyle}">
+            <Setter Property="Margin" Value="1,24,0,6" />
+        </Style>
+        <x:Double x:Key="SettingsCardSpacing">4</x:Double>
+    </Page.Resources>
+
+    <ScrollViewer>
+        <StackPanel MaxWidth="860" Padding="36,8,36,36" Spacing="{StaticResource SettingsCardSpacing}">
+            <TextBlock Text="設定" Style="{ThemeResource TitleTextBlockStyle}" Margin="0,0,0,8" />
+
+            <InfoBar x:Name="StatusBar" IsClosable="False">
+                <InfoBar.ActionButton>
+                    <Button x:Name="RetryButton" Content="再接続" Click="OnRetryClick" />
+                </InfoBar.ActionButton>
+            </InfoBar>
+            <InfoBar x:Name="ErrorBar" Severity="Error" IsOpen="False" />
+
+            <ContentControl x:Name="DevicePanel" HorizontalContentAlignment="Stretch">
+            <StackPanel Spacing="{StaticResource SettingsCardSpacing}">
+                <!-- 公式アプリの「設定」タブと同じカテゴリ順 -->
+                <TextBlock Text="接続デバイス管理（マルチポイント）" Style="{StaticResource CategoryHeaderStyle}" />
+                <toolkit:SettingsCard Header="マルチポイントの接続台数" Description="同時に接続できる機器の台数">
+                    <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE703;" /></toolkit:SettingsCard.HeaderIcon>
+                    <ComboBox x:Name="MultiPointBox" MinWidth="160" SelectionChanged="OnMultiPointChanged">
+                        <ComboBoxItem Content="1 台（OFF）" />
+                        <ComboBoxItem Content="2 台" />
+                        <ComboBoxItem Content="3 台" />
+                    </ComboBox>
+                </toolkit:SettingsCard>
+                <toolkit:SettingsExpander x:Name="ConnectedExpander" Header="ヘッドホンに接続中の機器" Expanded="OnConnectedExpanded">
+                    <toolkit:SettingsExpander.HeaderIcon><FontIcon Glyph="&#xE772;" /></toolkit:SettingsExpander.HeaderIcon>
+                    <toolkit:SettingsExpander.Items>
+                        <toolkit:SettingsCard>
+                            <toolkit:SettingsCard.Header>
+                                <TextBlock x:Name="ConnectedDevicesText" TextWrapping="Wrap" />
+                            </toolkit:SettingsCard.Header>
+                        </toolkit:SettingsCard>
+                    </toolkit:SettingsExpander.Items>
+                </toolkit:SettingsExpander>
+
+                <TextBlock Text="製品コントロール" Style="{StaticResource CategoryHeaderStyle}" />
+                <toolkit:SettingsCard Header="タッチセンサーのカスタマイズ" Description="タッチ操作の有効／無効と、左右のキー割り当て" IsClickEnabled="True" Click="OnKeyCustomizeClick">
+                    <toolkit:SettingsCard.HeaderIcon><BitmapIcon UriSource="ms-appx:///Assets/Official/Icons/Dark/ic_single_tap.png" ShowAsMonochrome="True" /></toolkit:SettingsCard.HeaderIcon>
+                </toolkit:SettingsCard>
+                <toolkit:SettingsExpander Header="ヘッドホン装着検知" Description="ヘッドホンを外したときの動作">
+                    <toolkit:SettingsExpander.HeaderIcon><FontIcon Glyph="&#xE7EF;" /></toolkit:SettingsExpander.HeaderIcon>
+                    <ToggleSwitch x:Name="WearingSwitch" Toggled="OnWearingChanged" />
+                    <toolkit:SettingsExpander.Items>
+                        <toolkit:SettingsCard Header="外したら音楽を一時停止する">
+                            <ToggleSwitch x:Name="WearingPauseSwitch" Toggled="OnWearingChanged" />
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard Header="着け直したら音楽を再開する">
+                            <ToggleSwitch x:Name="WearingResumeSwitch" Toggled="OnWearingChanged" />
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard Header="外しているときもタッチ操作を受け付ける">
+                            <ToggleSwitch x:Name="WearingTouchSwitch" Toggled="OnWearingChanged" />
+                        </toolkit:SettingsCard>
+                    </toolkit:SettingsExpander.Items>
+                </toolkit:SettingsExpander>
+                <toolkit:SettingsCard Header="オートパワーオフ" Description="接続していない状態が続いたら電源を切る">
+                    <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE7E8;" /></toolkit:SettingsCard.HeaderIcon>
+                    <ComboBox x:Name="AutoPowerOffBox" MinWidth="160" SelectionChanged="OnAutoPowerOffChanged">
+                        <ComboBoxItem Content="OFF" />
+                        <ComboBoxItem Content="5 分" />
+                        <ComboBoxItem Content="10 分" />
+                        <ComboBoxItem Content="30 分" />
+                        <ComboBoxItem Content="60 分" />
+                    </ComboBox>
+                </toolkit:SettingsCard>
+                <toolkit:SettingsCard Header="LED の点滅">
+                    <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE781;" /></toolkit:SettingsCard.HeaderIcon>
+                    <ToggleSwitch x:Name="LedSwitch" Toggled="OnLedChanged" />
+                </toolkit:SettingsCard>
+
+                <TextBlock Text="オーディオ/音質" Style="{StaticResource CategoryHeaderStyle}" />
+                <toolkit:SettingsCard Header="接続モード" Description="音質優先は高音質、接続優先は途切れにくさを重視">
+                    <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8D6;" /></toolkit:SettingsCard.HeaderIcon>
+                    <ComboBox x:Name="ConnectionModeBox" MinWidth="160" SelectionChanged="OnA2dpChanged">
+                        <ComboBoxItem Content="音質優先" />
+                        <ComboBoxItem Content="接続優先" />
+                    </ComboBox>
+                </toolkit:SettingsCard>
+                <toolkit:SettingsCard Header="LDAC" Description="LDAC に対応した機器と高音質で接続する">
+                    <toolkit:SettingsCard.HeaderIcon><BitmapIcon UriSource="ms-appx:///Assets/Official/Icons/Dark/icon_codec_ldac.png" ShowAsMonochrome="True" /></toolkit:SettingsCard.HeaderIcon>
+                    <ToggleSwitch x:Name="LdacSwitch" Toggled="OnA2dpChanged" />
+                </toolkit:SettingsCard>
+
+                <TextBlock Text="外音コントロール" Style="{StaticResource CategoryHeaderStyle}" />
+                <toolkit:SettingsCard Header="ノイズキャンセリングの最適化" Description="ノイズキャンセリングの効き具合を微調整する（左右とも同じ値にそろえます）">
+                    <toolkit:SettingsCard.HeaderIcon><BitmapIcon UriSource="ms-appx:///Assets/Official/Icons/Dark/ic_noise_cancellation_regular_96px.png" ShowAsMonochrome="True" /></toolkit:SettingsCard.HeaderIcon>
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <TextBlock x:Name="NcAdjustText" VerticalAlignment="Center" MinWidth="64" TextAlignment="Right" />
+                        <Slider x:Name="NcAdjustSlider" Width="220" Minimum="-12" Maximum="8" StepFrequency="1" SmallChange="1"
+                                ValueChanged="OnNcAdjustSliding" />
+                        <Button x:Name="NcAdjustResetButton" Content="標準に戻す" Click="OnNcAdjustReset" />
+                    </StackPanel>
+                </toolkit:SettingsCard>
+                <toolkit:SettingsExpander Header="アンビエントモードの設定" Description="外音取り込みの種類（左右とも同じ値にそろえます）">
+                    <toolkit:SettingsExpander.HeaderIcon><BitmapIcon UriSource="ms-appx:///Assets/Official/Icons/Dark/ic_ambiet_sound_regular_96px.png" ShowAsMonochrome="True" /></toolkit:SettingsExpander.HeaderIcon>
+                    <ComboBox x:Name="AmbientTypeBox" MinWidth="200" SelectionChanged="OnAmbientChanged">
+                        <ComboBoxItem Content="トランスペアレント" />
+                        <ComboBoxItem Content="アテンション" />
+                    </ComboBox>
+                    <toolkit:SettingsExpander.Items>
+                        <toolkit:SettingsCard Header="外音取り込み中は音楽を止める">
+                            <ToggleSwitch x:Name="AmbientStopMusicSwitch" Toggled="OnAmbientChanged" />
+                        </toolkit:SettingsCard>
+                    </toolkit:SettingsExpander.Items>
+                </toolkit:SettingsExpander>
+                <toolkit:SettingsExpander Header="外音コントロールの操作設定" Description="タッチ操作で切り替えるモード（2 つ以上。左右とも同じ値にそろえます）">
+                    <toolkit:SettingsExpander.HeaderIcon><FontIcon Glyph="&#xE8AB;" /></toolkit:SettingsExpander.HeaderIcon>
+                    <toolkit:SettingsExpander.Items>
+                        <toolkit:SettingsCard ContentAlignment="Left">
+                            <StackPanel Orientation="Horizontal" Spacing="24">
+                                <CheckBox x:Name="ToggleNcCheck" Content="ノイズキャンセリング" Click="OnOutsideToggleChanged" />
+                                <CheckBox x:Name="ToggleAmbientCheck" Content="外音取り込み" Click="OnOutsideToggleChanged" />
+                                <CheckBox x:Name="ToggleOffCheck" Content="OFF" Click="OnOutsideToggleChanged" />
+                            </StackPanel>
+                        </toolkit:SettingsCard>
+                    </toolkit:SettingsExpander.Items>
+                </toolkit:SettingsExpander>
+
+                <TextBlock Text="通話" Style="{StaticResource CategoryHeaderStyle}" />
+                <toolkit:SettingsCard Header="通話相手からのノイズを抑える強さ">
+                    <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE717;" /></toolkit:SettingsCard.HeaderIcon>
+                    <ComboBox x:Name="NoiseReductionBox" MinWidth="160" SelectionChanged="OnNoiseReductionChanged">
+                        <ComboBoxItem Content="標準" />
+                        <ComboBoxItem Content="強" />
+                    </ComboBox>
+                </toolkit:SettingsCard>
+            </StackPanel>
+            </ContentControl>
+
+            <TextBlock Text="ホーム画面" Style="{StaticResource CategoryHeaderStyle}" />
+            <toolkit:SettingsCard Header="本体色" Description="ホームに表示するイヤホンの色">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE790;" /></toolkit:SettingsCard.HeaderIcon>
+                <ComboBox x:Name="BodyColorBox" MinWidth="200" SelectionChanged="OnBodyColorChanged">
+                    <ComboBoxItem Content="ブラック" />
+                    <ComboBoxItem Content="シルバー" />
+                    <ComboBoxItem Content="ミッドナイトブルー" />
+                </ComboBox>
+            </toolkit:SettingsCard>
+
+            <TextBlock Text="ヘルプ" Style="{StaticResource CategoryHeaderStyle}" />
+            <toolkit:SettingsCard x:Name="ProductInfoCard" Header="製品情報" Description="ファームウェアのバージョン、使用時間、充電エラー" IsClickEnabled="True" Click="OnProductInfoClick">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE946;" /></toolkit:SettingsCard.HeaderIcon>
+            </toolkit:SettingsCard>
+
+            <TextBlock Text="アプリ" Style="{StaticResource CategoryHeaderStyle}" />
+            <toolkit:SettingsCard Header="テーマ">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE771;" /></toolkit:SettingsCard.HeaderIcon>
+                <ComboBox x:Name="ThemeBox" MinWidth="200" SelectionChanged="OnThemeChanged">
+                    <ComboBoxItem Content="Windows の設定に合わせる" />
+                    <ComboBoxItem Content="ライト" />
+                    <ComboBoxItem Content="ダーク" />
+                </ComboBox>
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard Header="Windows の起動時に開始する" Description="ウィンドウを開かず、タスクトレイに常駐します">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE7B5;" /></toolkit:SettingsCard.HeaderIcon>
+                <ToggleSwitch x:Name="StartupSwitch" Toggled="OnStartupChanged" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard Header="ウィンドウを閉じているあいだは接続を切る"
+                                  Description="イヤホンの設定チャネルは同時に 1 台しか使えません。スマホの Technics Audio Connect と併用するときにオンにします（閉じてから 1 分後に切断）">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8CD;" /></toolkit:SettingsCard.HeaderIcon>
+                <ToggleSwitch x:Name="DisconnectSwitch" Toggled="OnDisconnectChanged" />
+            </toolkit:SettingsCard>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

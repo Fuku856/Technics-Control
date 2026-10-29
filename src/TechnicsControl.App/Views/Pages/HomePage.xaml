@@ -1,0 +1,66 @@
+<Page
+    x:Class="TechnicsControl.App.Views.Pages.HomePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer>
+        <StackPanel MaxWidth="760" Padding="36,8,36,36" Spacing="20">
+            <TextBlock x:Name="DeviceNameText" Style="{ThemeResource TitleTextBlockStyle}" Text="Technics EAH-AZ80" />
+
+            <InfoBar x:Name="StatusBar" IsClosable="False">
+                <InfoBar.ActionButton>
+                    <Button x:Name="RetryButton" Content="再接続" Click="OnRetryClick" />
+                </InfoBar.ActionButton>
+            </InfoBar>
+
+            <!-- 公式アプリと同じく、イヤホン画像の上の中央にコーデックのロゴを出す -->
+            <Grid Height="30">
+                <BitmapIcon x:Name="CodecIcon" ShowAsMonochrome="True" Height="26" HorizontalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+            </Grid>
+
+            <Grid ColumnSpacing="24" HorizontalAlignment="Center">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="200" />
+                    <ColumnDefinition Width="200" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Spacing="6">
+                    <Image x:Name="LeftImage" Height="190" Stretch="Uniform" />
+                    <TextBlock x:Name="LeftBatteryText" HorizontalAlignment="Center" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Spacing="6">
+                    <Image x:Name="RightImage" Height="190" Stretch="Uniform" />
+                    <TextBlock x:Name="RightBatteryText" HorizontalAlignment="Center" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                </StackPanel>
+            </Grid>
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="16">
+                <Image x:Name="CaseImage" Height="70" Stretch="Uniform" />
+                <TextBlock x:Name="CaseBatteryText" VerticalAlignment="Center" Style="{ThemeResource BodyStrongTextBlockStyle}" />
+            </StackPanel>
+
+            <!-- 公式アプリのホームと同じく、現在のモードと強さを表示する。押すと外音コントロールへ -->
+            <Button x:Name="ModeCard" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="20,16" Click="OnModeCardClick">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <BitmapIcon x:Name="ModeIcon" ShowAsMonochrome="True" Width="36" Height="36" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Text="外音コントロール" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock x:Name="ModeText" Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                    </StackPanel>
+                    <TextBlock x:Name="LevelText" Grid.Column="2" VerticalAlignment="Center" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                    <FontIcon Grid.Column="3" Glyph="&#xE76C;" FontSize="14" />
+                </Grid>
+            </Button>
+
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+                <FontIcon x:Name="SyncIcon" FontSize="16" />
+                <TextBlock x:Name="SyncText" Style="{ThemeResource BodyTextBlockStyle}" />
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

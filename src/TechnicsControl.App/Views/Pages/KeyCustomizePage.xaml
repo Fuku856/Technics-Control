@@ -1,0 +1,24 @@
+<Page
+    x:Class="TechnicsControl.App.Views.Pages.KeyCustomizePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls">
+    <ScrollViewer>
+        <StackPanel MaxWidth="860" Padding="36,8,36,36" Spacing="4">
+            <TextBlock Text="タッチセンサーのカスタマイズ" Style="{ThemeResource TitleTextBlockStyle}" Margin="0,0,0,8" />
+            <InfoBar x:Name="ErrorBar" Severity="Error" IsOpen="False" />
+
+            <toolkit:SettingsCard Header="タッチ操作" Description="オフにすると、イヤホンのタッチセンサーが反応しなくなります">
+                <toolkit:SettingsCard.HeaderIcon><BitmapIcon UriSource="ms-appx:///Assets/Official/Icons/Dark/ic_single_tap.png" ShowAsMonochrome="True" /></toolkit:SettingsCard.HeaderIcon>
+                <ToggleSwitch x:Name="TouchSwitch" Toggled="OnTouchToggled" />
+            </toolkit:SettingsCard>
+
+            <TextBlock Text="キーの割り当て" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="1,24,0,6" />
+            <TextBlock Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
+                       Text="左右それぞれに、場面（音楽再生中・着信時・通話中）と操作（1 回／2 回／3 回タップ、長押し）ごとの機能を割り当てます。変更するとすぐイヤホンに反映されます。" />
+            <ContentControl x:Name="KeymapHost" HorizontalContentAlignment="Stretch" Margin="0,12,0,0">
+                <Grid x:Name="KeymapGrid" ColumnSpacing="16" RowSpacing="8" />
+            </ContentControl>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

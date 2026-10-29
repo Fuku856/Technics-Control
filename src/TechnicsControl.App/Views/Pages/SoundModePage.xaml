@@ -1,0 +1,30 @@
+<Page
+    x:Class="TechnicsControl.App.Views.Pages.SoundModePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer>
+        <StackPanel MaxWidth="860" Padding="36,8,36,36" Spacing="16">
+            <TextBlock Text="サウンドモード" Style="{ThemeResource TitleTextBlockStyle}" />
+
+            <InfoBar x:Name="StatusBar" IsClosable="False">
+                <InfoBar.ActionButton>
+                    <Button x:Name="RetryButton" Content="再接続" Click="OnRetryClick" />
+                </InfoBar.ActionButton>
+            </InfoBar>
+            <InfoBar x:Name="ErrorBar" Severity="Error" IsOpen="False" />
+
+            <TextBlock x:Name="CurrentText" Style="{ThemeResource SubtitleTextBlockStyle}" />
+
+            <!-- 公式アプリと同じプリセット。項目は SoundModePage.xaml.cs で作る -->
+            <GridView x:Name="ModeGrid" SelectionMode="Single" SelectionChanged="OnModeSelectionChanged" IsItemClickEnabled="False" />
+
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <ProgressRing x:Name="ApplyingRing" Width="16" Height="16" IsActive="False" />
+                <FontIcon x:Name="SyncIcon" FontSize="16" Visibility="Collapsed" />
+                <TextBlock x:Name="SyncText" Style="{ThemeResource BodyTextBlockStyle}" />
+            </StackPanel>
+            <TextBlock Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
+                       Text="カスタムの音質は、公式アプリ（Technics Audio Connect）で作った設定がイヤホンに保存されていれば、その設定で再生されます。" />
+        </StackPanel>
+    </ScrollViewer>
+</Page>

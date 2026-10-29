@@ -1,0 +1,59 @@
+<Window
+    x:Class="TechnicsControl.App.Views.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Technics Control">
+    <Window.SystemBackdrop>
+        <MicaBackdrop />
+    </Window.SystemBackdrop>
+
+    <Grid x:Name="RootGrid">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="48" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid x:Name="AppTitleBar" Height="48" Padding="16,0,140,0">
+            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                <Image x:Name="TitleBarIcon" Width="18" Height="18" />
+                <TextBlock x:Name="TitleText" Text="Technics Control" Style="{ThemeResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorPrimaryBrush}" VerticalAlignment="Center" />
+            </StackPanel>
+        </Grid>
+
+        <NavigationView
+            x:Name="Nav"
+            Grid.Row="1"
+            IsSettingsVisible="False"
+            IsBackButtonVisible="Auto"
+            IsPaneToggleButtonVisible="True"
+            PaneDisplayMode="Left"
+            OpenPaneLength="220"
+            SelectionChanged="OnNavSelectionChanged"
+            BackRequested="OnBackRequested">
+            <NavigationView.MenuItems>
+                <NavigationViewItem Content="ホーム" Tag="Home">
+                    <NavigationViewItem.Icon>
+                        <BitmapIcon UriSource="ms-appx:///Assets/Official/Icons/Dark/ic_tab_bar_home_24px_sel.png" ShowAsMonochrome="True" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="外音コントロール" Tag="Outside">
+                    <NavigationViewItem.Icon>
+                        <BitmapIcon UriSource="ms-appx:///Assets/Official/Icons/Dark/ic_tab_bar_noise_24px_sel.png" ShowAsMonochrome="True" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="サウンドモード" Tag="Sound">
+                    <NavigationViewItem.Icon>
+                        <BitmapIcon UriSource="ms-appx:///Assets/Official/Icons/Dark/ic_tab_bar_sound_24px_sel.png" ShowAsMonochrome="True" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="設定" Tag="Settings">
+                    <NavigationViewItem.Icon>
+                        <BitmapIcon UriSource="ms-appx:///Assets/Official/Icons/Dark/ic_tab_bar_settings_24px_sel.png" ShowAsMonochrome="True" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.MenuItems>
+            <Frame x:Name="ContentFrame" Navigated="OnFrameNavigated" />
+        </NavigationView>
+    </Grid>
+</Window>
