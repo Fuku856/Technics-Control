@@ -35,6 +35,8 @@ internal static class StatusView
         // 色は App.xaml のスタイル（ThemeResource）で指定し、要素ごとのテーマに追従させる
         (icon.Glyph, text.Text, icon.Style) = device.LeftRightMatch switch
         {
+            true when device.MismatchedSettings.Count > 0 =>
+                ("\uE7BA", $"左右で違う設定があります（{string.Join("、", device.MismatchedSettings)}）", Style("SyncWarningIconStyle")),
             true => ("\uE73E", "左右の設定は一致しています", Style("SyncOkIconStyle")),
             false => ("\uE7BA", "左右の設定が一致していません", Style("SyncWarningIconStyle")),
             null when device.IsConnected && !device.PartnerPresent => ("\uE946", "片方のイヤホンだけがつながっています", Style("SyncInfoIconStyle")),

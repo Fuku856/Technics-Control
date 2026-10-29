@@ -35,6 +35,9 @@ public sealed partial class DeviceService : ObservableObject
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan LevelPreviewInterval = TimeSpan.FromMilliseconds(500);
 
+    /// <summary>ウィンドウもクイックパネルも出していないときの読み直しの間隔（イヤホンとの通信を減らす）。</summary>
+    private static readonly TimeSpan HiddenRefreshInterval = TimeSpan.FromSeconds(60);
+
     /// <summary>強さを変えてからこの間は、イヤホンから返ってくる同じモードの値（途中で送った値）で表示を戻さない。</summary>
     private static readonly TimeSpan LevelEchoWindow = TimeSpan.FromMilliseconds(1500);
 
@@ -54,6 +57,9 @@ public sealed partial class DeviceService : ObservableObject
     // 画面から外音コントロールを変えるたびに増やす。読み直しの途中で変わったら、読んだ値は古いので使わない
     private int _outsideVersion;
     private DateTime _levelChangedAt = DateTime.MinValue;
+
+    // 左右で食い違っている設定（ID → 名前）。外音コントロールとアンビエントモードは LeftRightMatch で見る
+    private readonly Dictionary<ushort, string> _mismatched = [];
 
     public DeviceService(DispatcherQueue dispatcher)
     {
@@ -83,6 +89,10 @@ public sealed partial class DeviceService : ObservableObject
     /// <summary>NC／外音取り込みの設定が左右で一致しているか。null は未確認。</summary>
     [ObservableProperty]
     public partial bool? LeftRightMatch { get; private set; }
+
+    /// <summary>外音コントロール以外で、左右の値が食い違っている設定の名前（接続時と、設定を変えたときに確かめる）。</summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<string> MismatchedSettings { get; private set; } = [];
 
     [ObservableProperty]
     public partial int? LeftBattery { get; private set; }
@@ -120,6 +130,21 @@ public sealed partial class DeviceService : ObservableObject
 
     /// <summary>ウィンドウを閉じているあいだ接続を切る設定（SettingsStore と同期）。</summary>
     public bool Paused { get; private set; }
+
+    /// <summary>ウィンドウかクイックパネルを表示しているか。表示していないあいだは読み直しを減らす。</summary>
+    public bool IsUiVisible
+    {
+        get;
+        set
+        {
+            if (field == value)
+                return;
+            field = value;
+            // 開いたときは、すぐに最新の状態を読む
+            if (value && _device is not null)
+                _wake.Release();
+        }
+    }
 
     public event Action? DeviceStateChanged;
 
@@ -167,7 +192,7 @@ public sealed partial class DeviceService : ObservableObject
             else if (_device is not null)
                 await RefreshAsync();
 
-            var interval = _device is null ? RetryInterval : RefreshInterval;
+            var interval = _device is null ? RetryInterval : IsUiVisible ? RefreshInterval : HiddenRefreshInterval;
             try
             {
                 await _wake.WaitAsync(interval, cancellationToken);
@@ -207,6 +232,7 @@ public sealed partial class DeviceService : ObservableObject
             StatusMessage = "接続中";
             AgentIsRight = await device.IsAgentRightAsync();
             await RefreshAsync();
+            await CheckLeftRightAsync();
         }
         catch (TransportException ex)
         {
@@ -230,8 +256,9 @@ public sealed partial class DeviceService : ObservableObject
         await RunAsync(async device =>
         {
             var version = _outsideVersion;
-            var outside = await device.ReadBothAsync(role => device.GetOutsideControlAsync(role));
-            var ambient = await device.ReadBothAsync(role => device.GetAmbientSettingAsync(role));
+            // 相方への反映待ちで一瞬ずれて見えるだけのときは、読み直してから判断する
+            var outside = await device.ReadBothSettledAsync(role => device.GetOutsideControlAsync(role));
+            var ambient = await device.ReadBothSettledAsync(role => device.GetAmbientSettingAsync(role));
             // 読んでいるあいだに画面から変えていたら、読んだ値は古い（表示が一瞬戻ってしまう）。次の読み直しに任せる
             if (version == _outsideVersion && !IsApplying && !IsAdjustingLevel)
             {
@@ -249,6 +276,30 @@ public sealed partial class DeviceService : ObservableObject
             Codec = await device.GetCodecInfoAsync();
             return true;
         });
+        DeviceStateChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// 外音コントロールとアンビエントモード以外の設定が左右で同じか確かめる（読むだけ）。ids を省くとすべて確かめる。
+    /// 外音コントロールとアンビエントモードは、定期の読み直しで LeftRightMatch に反映している。
+    /// </summary>
+    public async Task CheckLeftRightAsync(params ushort[] ids)
+    {
+        var targets = ids.Length > 0
+            ? ids
+            : TechnicsDevice.PairedSettings.Select(s => s.Id).Where(id => id is not (TechnicsCommands.GetOutsideControl or TechnicsCommands.GetAmbientMode)).ToArray();
+        var results = await RunAsync(d => d.CompareSettingsAsync(targets));
+        if (results is null)
+            return;
+        foreach (var result in results)
+        {
+            // 読めなかった項目は、前の結果のままにする
+            if (result.IsMismatch)
+                _mismatched[result.Id] = result.Name;
+            else if (result.IsKnown)
+                _mismatched.Remove(result.Id);
+        }
+        MismatchedSettings = [.. TechnicsDevice.PairedSettings.Where(s => _mismatched.ContainsKey(s.Id)).Select(s => s.Name)];
         DeviceStateChanged?.Invoke();
     }
 
@@ -467,6 +518,8 @@ public sealed partial class DeviceService : ObservableObject
             State = ConnectionState.Searching;
         StatusMessage = message;
         LeftRightMatch = null;
+        _mismatched.Clear();
+        MismatchedSettings = [];
         OnPropertyChanged(nameof(IsConnected));
         DeviceStateChanged?.Invoke();
     }

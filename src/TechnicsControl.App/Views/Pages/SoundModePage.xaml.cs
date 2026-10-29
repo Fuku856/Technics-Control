@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
 using TechnicsControl.App.Services;
+using TechnicsControl.Core.Race;
 using TechnicsControl.Core.Technics;
 
 namespace TechnicsControl.App.Views.Pages;
@@ -110,6 +111,8 @@ public sealed partial class SoundModePage : Page
                 return;
             }
             Show(result.Value.Agent, result.Value.Matches, result.Value.PartnerPresent);
+            // ホームなどに出す「左右で違う設定」の一覧も更新する
+            await Device.CheckLeftRightAsync(PeqIds.GetGroup);
         }
         finally
         {

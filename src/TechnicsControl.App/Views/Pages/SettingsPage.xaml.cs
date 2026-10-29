@@ -102,8 +102,10 @@ public sealed partial class SettingsPage : Page
         });
     }
 
-    /// <summary>設定を送り、失敗したら表示を読み直す。</summary>
-    private async Task ApplyAsync(string name, Func<TechnicsDevice, Task> apply)
+    /// <summary>
+    /// 設定を送り、失敗したら表示を読み直す。送れたら、左右で同じ値になったか確かめる（読み取り ID が checkId）。
+    /// </summary>
+    private async Task ApplyAsync(string name, ushort checkId, Func<TechnicsDevice, Task> apply)
     {
         if (_loading)
             return;
@@ -119,7 +121,18 @@ public sealed partial class SettingsPage : Page
             ErrorBar.Message = Device.StatusMessage;
             ErrorBar.IsOpen = true;
             await LoadDeviceSettingsAsync();
+            return;
         }
+        // 公式アプリと同じく主側にだけ送り、相方へはイヤホンが反映する。反映されたかは読んで確かめる
+        await CheckLeftRightAsync(checkId);
+    }
+
+    private async Task CheckLeftRightAsync(ushort id)
+    {
+        await Device.CheckLeftRightAsync(id);
+        var name = TechnicsDevice.PairedSettings.First(s => s.Id == id).Name;
+        if (Device.MismatchedSettings.Contains(name))
+            ShowSyncError(false);
     }
 
     private void ShowWearing(WearingDetection value)
@@ -143,7 +156,7 @@ public sealed partial class SettingsPage : Page
         value.Decibel is { } db ? $"{db:+0.0;-0.0;0.0} dB" : "標準";
 
     private async void OnMultiPointChanged(object sender, SelectionChangedEventArgs e) =>
-        await ApplyAsync("マルチポイントの接続台数", d => d.SetMultiPointAsync((MultiPointMode)MultiPointBox.SelectedIndex));
+        await ApplyAsync("マルチポイントの接続台数", TechnicsCommands.GetMultiPoint, d => d.SetMultiPointAsync((MultiPointMode)MultiPointBox.SelectedIndex));
 
     private async void OnConnectedExpanded(object sender, EventArgs e)
     {
@@ -158,7 +171,7 @@ public sealed partial class SettingsPage : Page
     {
         var value = new WearingDetection(WearingSwitch.IsOn, WearingPauseSwitch.IsOn, WearingTouchSwitch.IsOn, WearingResumeSwitch.IsOn);
         WearingPauseSwitch.IsEnabled = WearingResumeSwitch.IsEnabled = WearingTouchSwitch.IsEnabled = value.Enabled;
-        await ApplyAsync("ヘッドホン装着検知", d => d.SetWearingDetectionAsync(value));
+        await ApplyAsync("ヘッドホン装着検知", TechnicsCommands.GetWearingDetection, d => d.SetWearingDetectionAsync(value));
     }
 
     private async void OnAutoPowerOffChanged(object sender, SelectionChangedEventArgs e)
@@ -168,17 +181,17 @@ public sealed partial class SettingsPage : Page
         var value = index <= 0
             ? new AutoPowerOff(false, AutoPowerOff.AllowedMinutes.Contains(_autoPowerOffMinutes) ? _autoPowerOffMinutes : (byte)10)
             : new AutoPowerOff(true, AutoPowerOffMinutes[index]);
-        await ApplyAsync("オートパワーオフ", d => d.SetAutoPowerOffAsync(value));
+        await ApplyAsync("オートパワーオフ", TechnicsCommands.GetAutoPowerOff, d => d.SetAutoPowerOffAsync(value));
     }
 
     private async void OnLedChanged(object sender, RoutedEventArgs e) =>
-        await ApplyAsync("LED の点滅", d => d.SetLedFlashAsync(LedSwitch.IsOn));
+        await ApplyAsync("LED の点滅", TechnicsCommands.GetLedFlash, d => d.SetLedFlashAsync(LedSwitch.IsOn));
 
     private async void OnA2dpChanged(object sender, RoutedEventArgs e)
     {
         var value = (ConnectionModeBox.SelectedIndex == 0 ? A2dpOption.SoundQualityPriority : A2dpOption.ConnectionPriority)
                     | (LdacSwitch.IsOn ? A2dpOption.Ldac : 0);
-        await ApplyAsync("接続モード", d => d.SetA2dpOptionAsync(value));
+        await ApplyAsync("接続モード", TechnicsCommands.GetA2dpOption, d => d.SetA2dpOptionAsync(value));
     }
 
     private void OnNcAdjustSliding(object sender, RangeBaseValueChangedEventArgs e)
@@ -206,6 +219,7 @@ public sealed partial class SettingsPage : Page
         ShowNcAdjust(result.Value.Agent);
         _loading = false;
         ShowSyncError(result.Value.Matches);
+        await Device.CheckLeftRightAsync(TechnicsCommands.GetNoiseCancelingAdjust);
     }
 
     private async void OnAmbientChanged(object sender, RoutedEventArgs e)
@@ -239,9 +253,12 @@ public sealed partial class SettingsPage : Page
         }
         var result = await Device.RunAsync(d => d.SetOutsideToggleAsync(value));
         if (result is null)
+        {
             await LoadDeviceSettingsAsync();
-        else
-            ShowSyncError(result.Value.Matches);
+            return;
+        }
+        ShowSyncError(result.Value.Matches);
+        await Device.CheckLeftRightAsync(TechnicsCommands.GetOutsideToggle);
     }
 
     private void ShowSyncError(bool matches)
@@ -252,7 +269,7 @@ public sealed partial class SettingsPage : Page
     }
 
     private async void OnNoiseReductionChanged(object sender, SelectionChangedEventArgs e) =>
-        await ApplyAsync("通話相手からのノイズを抑える強さ", d => d.SetNoiseReductionAsync((NoiseReduction)NoiseReductionBox.SelectedIndex));
+        await ApplyAsync("通話相手からのノイズを抑える強さ", TechnicsCommands.GetNoiseReduction, d => d.SetNoiseReductionAsync((NoiseReduction)NoiseReductionBox.SelectedIndex));
 
     private void OnBodyColorChanged(object sender, SelectionChangedEventArgs e)
     {
