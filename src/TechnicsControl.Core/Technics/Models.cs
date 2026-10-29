@@ -129,5 +129,13 @@ public sealed record SyncedValue<T>(T Agent, T? Partner, bool PartnerPresent)
     public bool Matches => !PartnerPresent || EqualityComparer<T?>.Default.Equals(Agent, Partner);
 }
 
+/// <summary>左右の設定の比較（値は 16 進の文字列）。読めなかったときは null。</summary>
+public sealed record SettingComparison(ushort Id, string Name, string? Agent, string? Partner)
+{
+    public bool IsKnown => Agent is not null && Partner is not null;
+
+    public bool IsMismatch => IsKnown && Agent != Partner;
+}
+
 /// <summary>左右を揃える設定の結果。</summary>
 public sealed record SyncResult<T>(SyncedValue<T> Value, int Attempts, bool UsedPartnerRelay);

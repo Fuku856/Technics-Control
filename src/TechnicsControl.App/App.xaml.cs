@@ -98,12 +98,14 @@ public partial class App : Application
 
     public void OnUiHidden()
     {
+        Device.IsUiVisible = IsUiVisible;
         if (Settings.DisconnectWhenHidden && !IsUiVisible)
             _idleTimer?.Start();
     }
 
     private void OnUiShown()
     {
+        Device.IsUiVisible = true;
         _idleTimer?.Stop();
         if (Device.Paused)
             Device.Reconnect();

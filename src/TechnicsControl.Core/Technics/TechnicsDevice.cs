@@ -304,6 +304,76 @@ public sealed class TechnicsDevice : IAsyncDisposable
     }
 
     /// <summary>
+    /// 左右の値を読み、食い違っていれば少し待ってもう一度読む。
+    /// 設定やタッチ操作の直後は、相方への反映が遅れて一瞬だけずれて見えることがあるため。
+    /// </summary>
+    public async Task<SyncedValue<T>> ReadBothSettledAsync<T>(Func<EarbudRole, Task<T>> read, CancellationToken cancellationToken = default)
+    {
+        var value = await ReadBothAsync(read).ConfigureAwait(false);
+        if (value.Matches)
+            return value;
+        await Task.Delay(SyncRetryDelay, cancellationToken).ConfigureAwait(false);
+        return await ReadBothAsync(read).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 左右で同じでなければならない設定（キー割り当ては左右で別々に持つので含まない）。
+    /// 装着検知は、相方からの読み取りを確認済みの 0x0023 で比べる。
+    /// </summary>
+    public static readonly IReadOnlyList<(ushort Id, string Name)> PairedSettings =
+    [
+        (TechnicsCommands.GetOutsideControl, "外音コントロール"),
+        (TechnicsCommands.GetAmbientMode, "アンビエントモード"),
+        (PeqIds.GetGroup, "サウンドモード"),
+        (TechnicsCommands.GetNoiseCancelingAdjust, "NC の最適化"),
+        (TechnicsCommands.GetOutsideToggle, "タッチでの切り替え順"),
+        (TechnicsCommands.GetA2dpOption, "接続モード／LDAC"),
+        (TechnicsCommands.GetMultiPoint, "マルチポイント"),
+        (TechnicsCommands.GetWearingDetection, "装着検知"),
+        (TechnicsCommands.GetAutoPowerOff, "オートパワーオフ"),
+        (TechnicsCommands.GetKeyEnable, "タッチ操作"),
+        (TechnicsCommands.GetLedFlash, "LED の点滅"),
+        (TechnicsCommands.GetNoiseReduction, "通話のノイズ抑制"),
+    ];
+
+    /// <summary>
+    /// 左右で同じでなければならない設定を、左右から読んで比べる（読むだけで、何も変えない）。
+    /// どれかが読めなかったら（応答がないなど）、待ち続けないよう残りは比べずに「不明」とする。
+    /// </summary>
+    public async Task<IReadOnlyList<SettingComparison>> CompareSettingsAsync(IEnumerable<ushort>? ids = null, CancellationToken cancellationToken = default)
+    {
+        var targets = ids is null ? PairedSettings : PairedSettings.Where(s => ids.Contains(s.Id)).ToList();
+        var results = new List<SettingComparison>();
+        var readable = HasPartner;
+        foreach (var (id, name) in targets)
+        {
+            if (!readable)
+            {
+                results.Add(new SettingComparison(id, name, null, null));
+                continue;
+            }
+            try
+            {
+                var value = await ReadBothSettledAsync(async role => Convert.ToHexString(await ReadRawAsync(id, role, cancellationToken).ConfigureAwait(false)),
+                    cancellationToken).ConfigureAwait(false);
+                results.Add(new SettingComparison(id, name, value.Agent, value.PartnerPresent ? value.Partner : null));
+                readable = value.PartnerPresent;
+            }
+            catch (Exception ex) when (ex is TimeoutException or RaceException)
+            {
+                results.Add(new SettingComparison(id, name, null, null));
+                readable = false;
+            }
+        }
+        return results;
+    }
+
+    private async Task<byte[]> ReadRawAsync(ushort id, EarbudRole role, CancellationToken cancellationToken) =>
+        id == PeqIds.GetGroup
+            ? [(byte)await GetSoundModeAsync(role, cancellationToken).ConfigureAwait(false)]
+            : await GetAsync(id, role, cancellationToken).ConfigureAwait(false);
+
+    /// <summary>
     /// 左右を揃える設定の手順。
     /// 主側へ送る → 左右を読んで比べる → 不一致なら読み直し → 主側へ再送 →（許可されていれば）相方へ中継で送る。
     /// </summary>

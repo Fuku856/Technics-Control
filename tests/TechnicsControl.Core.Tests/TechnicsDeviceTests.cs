@@ -92,6 +92,54 @@ public class TechnicsDeviceTests
     }
 
     [Fact]
+    public async Task Settled_read_waits_for_partner_to_follow()
+    {
+        var (earbuds, device) = await ConnectAsync(e =>
+        {
+            e.PartnerOutside = [0x01, 0x64, 0x64];
+            e.AfterPartnerOutsideRead = () => e.PartnerOutside = e.AgentOutside;
+        });
+        await using var _ = device;
+
+        var value = await device.ReadBothSettledAsync(role => device.GetOutsideControlAsync(role));
+
+        Assert.True(value.Matches);
+        Assert.Equal(2, earbuds.Sent.Count(p => p.Id == RelayIds.PassToDst));
+    }
+
+    [Fact]
+    public async Task Compare_settings_finds_mismatch_and_stops_at_unreadable_setting()
+    {
+        var (_, device) = await ConnectAsync(e => e.PartnerAmbient = [0x01, 0x00]);
+        await using var _ = device;
+        device.Client.Timeout = TimeSpan.FromMilliseconds(100);
+
+        var results = await device.CompareSettingsAsync();
+
+        Assert.Equal(TechnicsDevice.PairedSettings.Count, results.Count);
+        Assert.False(results[0].IsMismatch);
+        Assert.True(results[0].IsKnown);
+        Assert.True(results[1].IsMismatch);
+        Assert.Equal("0000", results[1].Agent);
+        Assert.Equal("0100", results[1].Partner);
+        // 模擬イヤホンはサウンドモードに応答しないので、そこから先は比べない
+        Assert.All(results.Skip(2), r => Assert.False(r.IsKnown));
+    }
+
+    [Fact]
+    public async Task Compare_settings_reads_only_requested_ids()
+    {
+        var (earbuds, device) = await ConnectAsync();
+        await using var _ = device;
+
+        var results = await device.CompareSettingsAsync([TechnicsCommands.GetAmbientMode]);
+
+        Assert.Single(results);
+        Assert.False(results[0].IsMismatch);
+        Assert.DoesNotContain(earbuds.Sent, p => p.Id == TechnicsCommands.GetOutsideControl);
+    }
+
+    [Fact]
     public async Task Single_earbud_is_not_compared()
     {
         var (_, device) = await ConnectAsync(e => e.HasPartner = false);

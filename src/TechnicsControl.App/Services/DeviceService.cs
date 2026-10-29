@@ -35,6 +35,9 @@ public sealed partial class DeviceService : ObservableObject
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan LevelPreviewInterval = TimeSpan.FromMilliseconds(500);
 
+    /// <summary>ウィンドウもクイックパネルも出していないときの読み直しの間隔（イヤホンとの通信を減らす）。</summary>
+    private static readonly TimeSpan HiddenRefreshInterval = TimeSpan.FromSeconds(60);
+
     /// <summary>強さを変えてからこの間は、イヤホンから返ってくる同じモードの値（途中で送った値）で表示を戻さない。</summary>
     private static readonly TimeSpan LevelEchoWindow = TimeSpan.FromMilliseconds(1500);
 
@@ -54,6 +57,9 @@ public sealed partial class DeviceService : ObservableObject
     // 画面から外音コントロールを変えるたびに増やす。読み直しの途中で変わったら、読んだ値は古いので使わない
     private int _outsideVersion;
     private DateTime _levelChangedAt = DateTime.MinValue;
+
+    // 次の読み直しで、外音コントロールとアンビエントモードを左右から読んで比べるか（接続直後と、イヤホンのタッチ操作のあと）
+    private bool _comparePartner;
 
     public DeviceService(DispatcherQueue dispatcher)
     {
@@ -83,6 +89,10 @@ public sealed partial class DeviceService : ObservableObject
     /// <summary>NC／外音取り込みの設定が左右で一致しているか。null は未確認。</summary>
     [ObservableProperty]
     public partial bool? LeftRightMatch { get; private set; }
+
+    /// <summary>外音コントロールとアンビエントモード以外で、左右の値が食い違っている設定の名前（接続したときに確かめる）。</summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<string> MismatchedSettings { get; private set; } = [];
 
     [ObservableProperty]
     public partial int? LeftBattery { get; private set; }
@@ -120,6 +130,21 @@ public sealed partial class DeviceService : ObservableObject
 
     /// <summary>ウィンドウを閉じているあいだ接続を切る設定（SettingsStore と同期）。</summary>
     public bool Paused { get; private set; }
+
+    /// <summary>ウィンドウかクイックパネルを表示しているか。表示していないあいだは読み直しを減らす。</summary>
+    public bool IsUiVisible
+    {
+        get;
+        set
+        {
+            if (field == value)
+                return;
+            field = value;
+            // 開いたときは、すぐに最新の状態を読む
+            if (value && _device is not null)
+                _wake.Release();
+        }
+    }
 
     public event Action? DeviceStateChanged;
 
@@ -167,7 +192,7 @@ public sealed partial class DeviceService : ObservableObject
             else if (_device is not null)
                 await RefreshAsync();
 
-            var interval = _device is null ? RetryInterval : RefreshInterval;
+            var interval = _device is null ? RetryInterval : IsUiVisible ? RefreshInterval : HiddenRefreshInterval;
             try
             {
                 await _wake.WaitAsync(interval, cancellationToken);
@@ -206,7 +231,9 @@ public sealed partial class DeviceService : ObservableObject
             State = ConnectionState.Connected;
             StatusMessage = "接続中";
             AgentIsRight = await device.IsAgentRightAsync();
+            _comparePartner = true;
             await RefreshAsync();
+            await CheckLeftRightAsync();
         }
         catch (TransportException ex)
         {
@@ -230,15 +257,40 @@ public sealed partial class DeviceService : ObservableObject
         await RunAsync(async device =>
         {
             var version = _outsideVersion;
-            var outside = await device.ReadBothAsync(role => device.GetOutsideControlAsync(role));
-            var ambient = await device.ReadBothAsync(role => device.GetAmbientSettingAsync(role));
+            // 相方がつながっているかは主側だけで答える（中継しないので軽い）。新しくつながったら左右を比べ直す
+            var hadPartner = device.HasPartner;
+            if (await device.RefreshPartnerAsync() && !hadPartner)
+                _comparePartner = true;
+
+            // 公式アプリと同じく、ふだんは主側だけ読む（相方へはイヤホンが反映する）。
+            // 左右を比べるのは接続直後とタッチ操作のあとだけ。画面からの変更は、送ったときに確かめている
+            var compare = _comparePartner && device.HasPartner;
+            SyncedValue<OutsideControl> outside;
+            SyncedValue<AmbientSetting> ambient;
+            if (compare)
+            {
+                // 相方への反映待ちで一瞬ずれて見えるだけのときは、読み直してから判断する
+                outside = await device.ReadBothSettledAsync(role => device.GetOutsideControlAsync(role));
+                ambient = await device.ReadBothSettledAsync(role => device.GetAmbientSettingAsync(role));
+            }
+            else
+            {
+                outside = new SyncedValue<OutsideControl>(await device.GetOutsideControlAsync(), null, false);
+                ambient = new SyncedValue<AmbientSetting>(await device.GetAmbientSettingAsync(), null, false);
+            }
             // 読んでいるあいだに画面から変えていたら、読んだ値は古い（表示が一瞬戻ってしまう）。次の読み直しに任せる
             if (version == _outsideVersion && !IsApplying && !IsAdjustingLevel)
             {
                 Outside = outside.Agent;
                 Ambient = ambient.Agent;
-                PartnerPresent = outside.PartnerPresent;
-                LeftRightMatch = outside.PartnerPresent ? outside.Matches && ambient.Matches : null;
+                PartnerPresent = device.HasPartner;
+                if (!device.HasPartner)
+                    LeftRightMatch = null;
+                else if (compare && outside.PartnerPresent)
+                {
+                    LeftRightMatch = outside.Matches && ambient.Matches;
+                    _comparePartner = false;
+                }
             }
 
             var agent = await device.GetBatteryAsync(EarbudRole.Agent);
@@ -249,6 +301,22 @@ public sealed partial class DeviceService : ObservableObject
             Codec = await device.GetCodecInfoAsync();
             return true;
         });
+        DeviceStateChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// 外音コントロールとアンビエントモード以外の設定が左右で同じか、接続したときに一度だけ確かめる（読むだけ）。
+    /// 公式アプリはどの設定も主側に送るだけで、相方へはイヤホンが反映するので、変更のたびには確かめない。
+    /// 外音コントロールとアンビエントモードは、接続直後とタッチ操作のあとの読み直しで LeftRightMatch に反映している。
+    /// </summary>
+    private async Task CheckLeftRightAsync()
+    {
+        var targets = TechnicsDevice.PairedSettings.Select(s => s.Id)
+            .Where(id => id is not (TechnicsCommands.GetOutsideControl or TechnicsCommands.GetAmbientMode)).ToArray();
+        var results = await RunAsync(d => d.CompareSettingsAsync(targets));
+        if (results is null)
+            return;
+        MismatchedSettings = [.. results.Where(r => r.IsMismatch).Select(r => r.Name)];
         DeviceStateChanged?.Invoke();
     }
 
@@ -453,6 +521,7 @@ public sealed partial class DeviceService : ObservableObject
         _outsideVersion++;
         Outside = value;
         // イヤホンのタッチ操作でも左右がずれていないか確かめる
+        _comparePartner = true;
         _wake.Release();
         DeviceStateChanged?.Invoke();
     }
@@ -467,6 +536,7 @@ public sealed partial class DeviceService : ObservableObject
             State = ConnectionState.Searching;
         StatusMessage = message;
         LeftRightMatch = null;
+        MismatchedSettings = [];
         OnPropertyChanged(nameof(IsConnected));
         DeviceStateChanged?.Invoke();
     }

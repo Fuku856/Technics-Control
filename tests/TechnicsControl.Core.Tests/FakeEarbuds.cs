@@ -22,6 +22,9 @@ internal sealed class FakeEarbuds : IRaceTransport
 
     public List<RacePacket> Sent { get; } = [];
 
+    /// <summary>相方の外音コントロールを読まれた直後に呼ぶ（相方への反映が遅れる状況の再現）。</summary>
+    public Action? AfterPartnerOutsideRead { get; set; }
+
     public Task SendAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken)
     {
         var request = RacePacket.Parse(data.Span);
@@ -68,6 +71,8 @@ internal sealed class FakeEarbuds : IRaceTransport
                 break;
             case 0x000A:
                 yield return Ok(partner ? PartnerOutside : AgentOutside);
+                if (partner)
+                    AfterPartnerOutsideRead?.Invoke();
                 break;
             case 0x000B:
                 Apply(request.Payload, partner, v => AgentOutside = v, v => PartnerOutside = v);
