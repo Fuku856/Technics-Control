@@ -78,13 +78,13 @@ public sealed partial class SoundModePage : Page
             _current = mode;
             ModeGrid.SelectedItem = ModeGrid.Items.OfType<GridViewItem>().FirstOrDefault(i => (SoundMode)i.Tag == mode);
             CurrentText.Text = $"現在: {ModeName(mode)}";
-            SyncIcon.Visibility = Visibility.Visible;
-            (SyncIcon.Glyph, SyncText.Text, SyncIcon.Style) = (matches, partnerPresent) switch
+            // 左右が食い違っているときだけ知らせる（一致していれば何も出さない）
+            StatusView.Show(SyncIcon, SyncText, (matches, partnerPresent) switch
             {
-                (true, true) => ("", "左右の設定は一致しています", (Style)Application.Current.Resources["SyncOkIconStyle"]),
-                (false, _) => ("", "左右の設定が一致していません", (Style)Application.Current.Resources["SyncWarningIconStyle"]),
-                _ => ("", "片方のイヤホンだけがつながっています", (Style)Application.Current.Resources["SyncInfoIconStyle"]),
-            };
+                (false, _) => ("\uE7BA", "左右の設定が一致していません", (Style)Application.Current.Resources["SyncWarningIconStyle"]),
+                (true, false) => ("\uE946", "片方のイヤホンだけがつながっています", (Style)Application.Current.Resources["SyncInfoIconStyle"]),
+                _ => null,
+            });
         }
         finally
         {
