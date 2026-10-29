@@ -239,15 +239,6 @@ public sealed partial class KeyCustomizePage : Page
             ErrorBar.Message = Device.StatusMessage;
             ErrorBar.IsOpen = true;
             await LoadAsync();
-            return;
-        }
-        // 主側にだけ送るので、相方にも反映されたか確かめる
-        await Device.CheckLeftRightAsync(TechnicsCommands.GetKeyEnable);
-        if (Device.MismatchedSettings.Count > 0)
-        {
-            ErrorBar.Title = "左右の設定が一致していません";
-            ErrorBar.Message = $"{string.Join("、", Device.MismatchedSettings)}が左右で違います。もう一度変更してください。";
-            ErrorBar.IsOpen = true;
         }
     }
 }
