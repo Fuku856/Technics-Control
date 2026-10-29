@@ -6,7 +6,7 @@ namespace TechnicsControl.App.Services;
 
 /// <summary>
 /// タスクトレイのアイコン。アイコンは今のモードを表し、タスクバーのテーマ（明るい／暗い）に合わせて色を変える。
-/// 左クリックでクイックパネル、右クリックでメニュー。
+/// 左クリックでクイックパネル、ダブルクリックでメインウィンドウ、右クリックでメニュー。
 /// </summary>
 public sealed class TrayService : IDisposable
 {
@@ -23,6 +23,8 @@ public sealed class TrayService : IDisposable
             NoLeftClickDelay = true,
             ContextMenuMode = ContextMenuMode.SecondWindow,
             LeftClickCommand = new RelayCommand(() => App.Instance.ToggleQuickPanel()),
+            // 1 回目のクリックでクイックパネルが開くので、閉じてからメインウィンドウを手前に出す
+            DoubleClickCommand = new RelayCommand(() => App.Instance.ShowMainWindow(hideQuickPanel: true)),
             ContextFlyout = BuildMenu(),
         };
         Update();

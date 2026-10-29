@@ -61,15 +61,18 @@ public partial class App : Application
 
     private bool IsUiVisible => MainWindow?.AppWindow.IsVisible == true || _quickPanel?.IsShown == true;
 
-    public void ShowMainWindow()
+    public void ShowMainWindow() => ShowMainWindow(hideQuickPanel: false);
+
+    public void ShowMainWindow(bool hideQuickPanel)
     {
+        if (hideQuickPanel)
+            _quickPanel?.HidePanel();
         if (MainWindow is null)
         {
             MainWindow = new MainWindow();
             Theme.Register(MainWindow);
         }
-        MainWindow.AppWindow.Show();
-        MainWindow.Activate();
+        MainWindow.BringToFront();
         OnUiShown();
     }
 
