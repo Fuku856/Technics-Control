@@ -40,15 +40,17 @@ public sealed partial class OutsideControlPage : Page
                 ModeSelector.SelectedIndex = Device.Mode is { } mode ? (int)mode : -1;
             ModeTitle.Text = connected ? Device.ModeText : "";
 
+            // アテンションと OFF には強さがない（Device.Level が null）
             Dial.IsEnabled = connected && Device.Level is not null;
             Dial.Caption = Device.Mode switch
             {
                 UiMode.NoiseCanceling => "ノイズキャンセリングの強さ",
-                UiMode.Transparent or UiMode.Attention => "外音取り込みの強さ",
+                UiMode.Transparent => "外音取り込みの強さ",
+                UiMode.Attention => "アテンションのときは調整できません",
                 _ => "OFF のときは調整できません",
             };
-            // ドラッグ中はイヤホン側の値で上書きしない
-            if (!Dial.IsDragging && Device.Level is { } level)
+            // 操作中（ドラッグ中や、ホイール・キーで動かして確定する前）はイヤホン側の値で上書きしない
+            if (!Dial.IsInteracting && Device.Level is { } level)
                 Dial.Value = level;
 
             ApplyingRing.IsActive = Device.IsApplying;

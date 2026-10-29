@@ -105,7 +105,7 @@ public sealed partial class QuickPanelWindow : Window
             LevelCaption.Text = Device.Mode switch
             {
                 UiMode.NoiseCanceling => "NC の強さ",
-                UiMode.Transparent or UiMode.Attention => "外音の強さ",
+                UiMode.Transparent => "外音の強さ",
                 _ => "強さ",
             };
             LevelSlider.IsEnabled = connected && Device.Level is not null;
