@@ -40,3 +40,9 @@ GitHub の Releases からリリースを手動で作成（公開）すると、
 - **`dev`**: プレリリースとして使います。ターゲットを `dev` にしてリリースを作成すると、プレリリースのチェックが外れていても自動でプレリリースに変更されます（タグ例: `v1.3.0-beta.1`）。
 
 インストーラーはユーザー単位（`%LOCALAPPDATA%\Programs\TechnicsControl`）にインストールされ、管理者権限は不要です。
+
+ローカルで同じインストーラーを作るには、[Inno Setup 6](https://jrsoftware.org/isinfo.php) を入れて次を実行します（`artifacts/installer/` に出力）。
+
+```powershell
+./installer/build-installer.ps1 -Version 1.0.0
+```
