@@ -28,7 +28,12 @@ jobs:
       - name: Resolve latest release
         id: latest
         run: |
-          latest=$(gh release view --repo "$REPO" --json tagName -q .tagName)
+          # dev からのリリースはプレリリースになるため、プレリリースも含めて一番新しいものを最新とする
+          latest=$(gh release list --repo "$REPO" --exclude-drafts --limit 1 --json tagName -q '.[0].tagName')
+          if [ -z "$latest" ]; then
+            echo "::error::No published release found."
+            exit 1
+          fi
           if [ -n "$EVENT_TAG" ] && [ "$EVENT_TAG" != "$latest" ]; then
             echo "::notice::$EVENT_TAG is not the latest release ($latest). Skipping."
             echo "skip=true" >> "$GITHUB_OUTPUT"
