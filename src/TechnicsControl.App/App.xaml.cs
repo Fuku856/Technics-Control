@@ -21,6 +21,21 @@ public partial class App : Application
         InitializeComponent();
         // ウィンドウをすべて閉じてもトレイに常駐し続ける
         DispatcherShutdownMode = DispatcherShutdownMode.OnExplicitShutdown;
+        UnhandledException += (_, e) =>
+        {
+            ErrorLog.Write(e.Exception);
+            e.Handled = true;
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            if (e.ExceptionObject is Exception exception)
+                ErrorLog.Write(exception);
+        };
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            ErrorLog.Write(e.Exception);
+            e.SetObserved();
+        };
     }
 
     public static App Instance { get; private set; } = null!;
@@ -82,7 +97,17 @@ public partial class App : Application
     {
         if (_quickPanel is null)
         {
-            _quickPanel = new QuickPanelWindow();
+            try
+            {
+                _quickPanel = new QuickPanelWindow();
+            }
+            catch (Exception e)
+            {
+                // パネルを作れなくても落とさず、メインウィンドウで操作できるようにする
+                ErrorLog.Write(e);
+                ShowMainWindow();
+                return;
+            }
             Theme.Register(_quickPanel);
         }
         if (_quickPanel.IsShown)
