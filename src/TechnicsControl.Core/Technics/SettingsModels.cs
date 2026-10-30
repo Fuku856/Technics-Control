@@ -17,6 +17,25 @@ public enum SoundMode : byte
     Custom3 = 11,
 }
 
+/// <summary>
+/// 機種 ID（0x0000）の応答。公式アプリは 4 バイト目の各ビットで、設定項目を表示するかを決めている
+/// （DeviceMmiAiroha2.getByteToBitIntArray: 上位ビットから順に並べた配列の添字）。
+/// </summary>
+public sealed record DeviceCapabilities(ushort ModelId, byte Flags)
+{
+    public bool MusicVideoBuffer => Bit(0);
+    public bool KeyCustomize => Bit(2);
+    public bool KeyEnable => Bit(3);
+    public bool OutsideToggle => Bit(4);
+    public bool LedFlash => Bit(5);
+
+    /// <summary>値部分（ステータスの後ろ）から作る。AZ80 は 70 00 03 FB 19 02。</summary>
+    public static DeviceCapabilities FromPayload(ReadOnlySpan<byte> data) =>
+        new((ushort)(data[0] | data[1] << 8), data.Length > 3 ? data[3] : (byte)0);
+
+    private bool Bit(int indexFromMsb) => (Flags >> (7 - indexFromMsb) & 1) != 0;
+}
+
 /// <summary>マルチポイントの接続台数（0x0032／0x0033）。</summary>
 public enum MultiPointMode : byte
 {

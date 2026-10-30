@@ -175,6 +175,10 @@ public sealed class TechnicsDevice : IAsyncDisposable
 
     // ── 設定ページの項目 ───────────────────────────────────────
 
+    /// <summary>機種と、設定項目ごとの有無（公式アプリと同じ判定に使う）。</summary>
+    public async Task<DeviceCapabilities> GetCapabilitiesAsync(CancellationToken cancellationToken = default) =>
+        DeviceCapabilities.FromPayload(await GetAsync(TechnicsCommands.GetModelId, cancellationToken: cancellationToken).ConfigureAwait(false));
+
     public async Task<MultiPointMode> GetMultiPointAsync(CancellationToken cancellationToken = default) =>
         (MultiPointMode)(await GetAsync(TechnicsCommands.GetMultiPoint, cancellationToken: cancellationToken).ConfigureAwait(false))[0];
 

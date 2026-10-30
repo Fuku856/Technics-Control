@@ -66,10 +66,12 @@ public sealed partial class SettingsPage : Page
 
         await Device.RunAsync(async d =>
         {
+            // 公式アプリと同じく、機種 ID の機能ビットで項目の表示を決める（AZ80 は LED の点滅なし）
+            var caps = await d.GetCapabilitiesAsync();
             var multiPoint = await d.GetMultiPointAsync();
             var wearing = await d.GetWearingDetectionAsync();
             var autoPowerOff = await d.GetAutoPowerOffAsync();
-            var led = await d.GetLedFlashAsync();
+            var led = caps.LedFlash && await d.GetLedFlashAsync();
             var a2dp = await d.GetA2dpOptionAsync();
             var ncAdjust = await d.GetNoiseCancelingAdjustAsync();
             var ambient = await d.GetAmbientSettingAsync();
@@ -79,6 +81,9 @@ public sealed partial class SettingsPage : Page
             _loading = true;
             try
             {
+                LedCard.Visibility = caps.LedFlash ? Visibility.Visible : Visibility.Collapsed;
+                KeyCustomizeCard.Visibility = caps.KeyCustomize || caps.KeyEnable ? Visibility.Visible : Visibility.Collapsed;
+                OutsideToggleExpander.Visibility = caps.OutsideToggle ? Visibility.Visible : Visibility.Collapsed;
                 MultiPointBox.SelectedIndex = (int)multiPoint;
                 ShowWearing(wearing);
                 _autoPowerOffMinutes = autoPowerOff.Minutes;

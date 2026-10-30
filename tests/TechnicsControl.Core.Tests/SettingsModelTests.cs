@@ -33,6 +33,20 @@ public class SettingsModelTests
     }
 
     [Fact]
+    public void Az80_capabilities_hide_led_setting_like_official_app()
+    {
+        // 実機（AZ80）の 0x0000 の応答: 05 5B 09 00 00 00 | 00 | 70 00 03 FB 19 02
+        var caps = DeviceCapabilities.FromPayload(Hex("70 00 03 FB 19 02"));
+
+        Assert.Equal(0x0070, caps.ModelId);
+        Assert.False(caps.LedFlash);
+        Assert.True(caps.KeyEnable);
+        Assert.True(caps.OutsideToggle);
+        Assert.True(caps.KeyCustomize);
+        Assert.True(caps.MusicVideoBuffer);
+    }
+
+    [Fact]
     public void Parses_recorded_wearing_detection()
     {
         var value = WearingDetection.FromPayload(Hex("01 01 00 01"));

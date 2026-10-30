@@ -45,7 +45,7 @@
                 </toolkit:SettingsExpander>
 
                 <TextBlock Text="製品コントロール" Style="{StaticResource CategoryHeaderStyle}" />
-                <toolkit:SettingsCard Header="タッチセンサーのカスタマイズ" Description="タッチ操作の有効／無効と、左右のキー割り当て" IsClickEnabled="True" Click="OnKeyCustomizeClick">
+                <toolkit:SettingsCard x:Name="KeyCustomizeCard" Header="タッチセンサーのカスタマイズ" Description="タッチ操作の有効／無効と、左右のキー割り当て" IsClickEnabled="True" Click="OnKeyCustomizeClick">
                     <toolkit:SettingsCard.HeaderIcon><BitmapIcon UriSource="ms-appx:///Assets/Official/Icons/Dark/ic_single_tap.png" ShowAsMonochrome="True" /></toolkit:SettingsCard.HeaderIcon>
                 </toolkit:SettingsCard>
                 <toolkit:SettingsExpander Header="ヘッドホン装着検知" Description="ヘッドホンを外したときの動作">
@@ -73,7 +73,7 @@
                         <ComboBoxItem Content="60 分" />
                     </ComboBox>
                 </toolkit:SettingsCard>
-                <toolkit:SettingsCard Header="LED の点滅">
+                <toolkit:SettingsCard x:Name="LedCard" Visibility="Collapsed" Header="LED の点滅" Description="オン: 電源が入っているあいだ、イヤホンの LED が常に点滅します。オフ: スマホなどと接続中は LED が消灯します（電話の着信時を除く）">
                     <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE781;" /></toolkit:SettingsCard.HeaderIcon>
                     <ToggleSwitch x:Name="LedSwitch" Toggled="OnLedChanged" />
                 </toolkit:SettingsCard>
@@ -113,7 +113,7 @@
                         </toolkit:SettingsCard>
                     </toolkit:SettingsExpander.Items>
                 </toolkit:SettingsExpander>
-                <toolkit:SettingsExpander Header="外音コントロールの操作設定" Description="タッチ操作で切り替えるモード（2 つ以上。左右とも同じ値にそろえます）">
+                <toolkit:SettingsExpander x:Name="OutsideToggleExpander" Header="外音コントロールの操作設定" Description="タッチ操作で切り替えるモード（2 つ以上。左右とも同じ値にそろえます）">
                     <toolkit:SettingsExpander.HeaderIcon><FontIcon Glyph="&#xE8AB;" /></toolkit:SettingsExpander.HeaderIcon>
                     <toolkit:SettingsExpander.Items>
                         <toolkit:SettingsCard ContentAlignment="Left">
