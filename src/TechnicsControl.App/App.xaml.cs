@@ -110,7 +110,9 @@ public partial class App : Application
             }
             Theme.Register(_quickPanel);
         }
-        if (_quickPanel.IsShown)
+        // パネル表示中にトレイアイコンを押すと、クリックより先にフォーカスが外れてパネルが閉じる。
+        // その直後のクリックは「閉じる」操作なので、開き直さない
+        if (_quickPanel.IsShown || _quickPanel.WasJustAutoHidden)
         {
             _quickPanel.HidePanel();
             return;

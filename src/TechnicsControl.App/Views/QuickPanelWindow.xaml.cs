@@ -13,9 +13,12 @@ public sealed partial class QuickPanelWindow : Window
 {
     private const int PanelWidth = 440;
     private const int PanelHeight = 300;
+    // フォーカスが外れて閉じた直後のトレイのクリックは「閉じる」とみなす時間
+    private const int AutoHideGraceMs = 300;
 
     private readonly DispatcherTimer _commitTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
     private bool _updating;
+    private long? _autoHiddenAt;
 
     private DeviceService Device => App.Device;
 
@@ -36,8 +39,11 @@ public sealed partial class QuickPanelWindow : Window
         // フォーカスが外れたら閉じる（タスクバーのフライアウトと同じ振る舞い）
         Activated += (_, args) =>
         {
-            if (args.WindowActivationState == WindowActivationState.Deactivated)
+            if (args.WindowActivationState == WindowActivationState.Deactivated && IsShown)
+            {
+                _autoHiddenAt = Environment.TickCount64;
                 HidePanel();
+            }
         };
         _commitTimer.Tick += async (_, _) =>
         {
@@ -49,6 +55,9 @@ public sealed partial class QuickPanelWindow : Window
     }
 
     public bool IsShown { get; private set; }
+
+    /// <summary>フォーカスが外れて自動で閉じたばかりか。</summary>
+    public bool WasJustAutoHidden => Environment.TickCount64 - _autoHiddenAt < AutoHideGraceMs;
 
     public void ShowPanel()
     {
