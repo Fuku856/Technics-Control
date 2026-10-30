@@ -65,3 +65,28 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+// 閉じるボタンではトレイに隠れるだけで終了しないため、CloseApplications では閉じられない。
+// 動いたままだと exe や読み込み中の DLL を消せないので、上書き・削除の前に終了させる
+procedure CloseRunningApp();
+var
+  ResultCode: Integer;
+begin
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/f /im "{#AppExeName}"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  // 実行中のアプリがあったとき (0) は、ファイルのロックが外れるのを少し待つ
+  if ResultCode = 0 then
+    Sleep(1000);
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  CloseRunningApp();
+  Result := '';
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usUninstall then
+    CloseRunningApp();
+end;
