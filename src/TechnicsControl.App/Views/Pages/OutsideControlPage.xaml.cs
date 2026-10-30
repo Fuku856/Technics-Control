@@ -15,6 +15,8 @@ public sealed partial class OutsideControlPage : Page
     public OutsideControlPage()
     {
         InitializeComponent();
+        ResponsiveHelper.Attach(Scroller, RootPanel,
+            width => ResponsiveHelper.SetCompact(ModeSelector, width < ResponsiveHelper.SegmentedNormalMinWidth));
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)

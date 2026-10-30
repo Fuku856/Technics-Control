@@ -21,6 +21,9 @@ public sealed partial class SettingsPage : Page
     public SettingsPage()
     {
         InitializeComponent();
+        // 狭いときは、横に並べたチェックボックスを縦にする
+        ResponsiveHelper.Attach(Scroller, RootPanel,
+            width => OutsideTogglePanel.Orientation = width < 600 ? Orientation.Vertical : Orientation.Horizontal);
         // スライダーを動かし終えてから送る
         _ncAdjustTimer.Tick += async (_, _) =>
         {

@@ -8,14 +8,15 @@
         <DesktopAcrylicBackdrop />
     </Window.SystemBackdrop>
 
-    <Grid x:Name="RootGrid" Padding="20,16,20,16" RowSpacing="14">
+    <!-- 高さは中身に合わせる（VerticalAlignment=Top なので、中身が変わると SizeChanged が来てウィンドウを合わせ直す） -->
+    <Grid x:Name="RootGrid" Padding="20,16,20,16" RowSpacing="14" VerticalAlignment="Top">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <Grid>
@@ -63,8 +64,8 @@
                 <ColumnDefinition Width="36" />
             </Grid.ColumnDefinitions>
             <TextBlock x:Name="LevelCaption" VerticalAlignment="Center" Style="{ThemeResource CaptionTextBlockStyle}" />
-            <Slider x:Name="LevelSlider" Grid.Column="1" Minimum="1" Maximum="100" StepFrequency="1" SmallChange="1" LargeChange="10"
-                    ValueChanged="OnLevelChanged" />
+            <!-- ValueChanged はコードで付ける（Minimum の設定で値が 0→1 に変わり、解析中にハンドラーが呼ばれてしまうため） -->
+            <Slider x:Name="LevelSlider" Grid.Column="1" Minimum="1" Maximum="100" StepFrequency="1" SmallChange="1" LargeChange="10" />
             <TextBlock x:Name="LevelText" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Style="{ThemeResource BodyStrongTextBlockStyle}" />
         </Grid>
 

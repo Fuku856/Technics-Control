@@ -14,6 +14,7 @@ public sealed partial class ProductInfoPage : Page
     public ProductInfoPage()
     {
         InitializeComponent();
+        ResponsiveHelper.Attach(Scroller, RootPanel);
     }
 
     protected override async void OnNavigatedTo(NavigationEventArgs e) => await LoadAsync();

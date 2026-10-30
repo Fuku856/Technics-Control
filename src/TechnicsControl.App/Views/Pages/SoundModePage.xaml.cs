@@ -31,11 +31,17 @@ public sealed partial class SoundModePage : Page
     public SoundModePage()
     {
         InitializeComponent();
+        ResponsiveHelper.Attach(Scroller, RootPanel);
         foreach (var (mode, name, icon) in Modes)
         {
-            var content = new StackPanel { Width = 120, Height = 96, Spacing = 8, Padding = new Thickness(8) };
+            // 項目はすべて同じ大きさで並ぶので、いちばん長い名前（バスエンハンサー＋）が 2 行で収まる高さにする
+            var content = new StackPanel { Width = 128, Height = 108, Spacing = 8, Padding = new Thickness(8) };
             content.Children.Add(new BitmapIcon { UriSource = Assets.Icon(icon), ShowAsMonochrome = true, Width = 36, Height = 36 });
-            content.Children.Add(new TextBlock { Text = name, HorizontalAlignment = HorizontalAlignment.Center, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center });
+            content.Children.Add(new TextBlock
+            {
+                Text = name, HorizontalAlignment = HorizontalAlignment.Center, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center,
+                MaxLines = 2, TextTrimming = TextTrimming.CharacterEllipsis,
+            });
             var item = new GridViewItem { Content = content, Tag = mode };
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(item, name);
             ModeGrid.Items.Add(item);

@@ -44,11 +44,14 @@ public sealed partial class MainWindow : Window
 
         var scale = Content.XamlRoot?.RasterizationScale ?? GetDpiScale();
         AppWindow.Resize(new SizeInt32((int)(1040 * scale), (int)(760 * scale)));
-        if (AppWindow.Presenter is OverlappedPresenter presenter)
+        ApplyScale(scale);
+        // 拡大率の違うモニターへ移したときは、最小サイズとタイトルバーの余白を付け直す
+        RootGrid.Loaded += (_, _) => RootGrid.XamlRoot.Changed += (_, _) => ApplyScale(RootGrid.XamlRoot.RasterizationScale);
+        AppWindow.Changed += (_, args) =>
         {
-            presenter.PreferredMinimumWidth = (int)(560 * scale);
-            presenter.PreferredMinimumHeight = (int)(520 * scale);
-        }
+            if (args.DidSizeChange)
+                UpdateTitleBarInsets();
+        };
 
         // 閉じるボタンではトレイに隠すだけにする（終了はトレイのメニューから）
         AppWindow.Closing += (_, args) =>
@@ -65,6 +68,10 @@ public sealed partial class MainWindow : Window
         RootGrid.PreviewKeyDown += OnPreviewKeyDown;
         RootGrid.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(OnPointerPressed), handledEventsToo: true);
 
+        // 狭いとき（Minimal）はメニューのボタンがページの上に重なるので、その分ページを下げる
+        Nav.DisplayModeChanged += (_, args) => UpdateContentMargin(args.DisplayMode);
+        Nav.Loaded += (_, _) => UpdateContentMargin(Nav.DisplayMode);
+
         Nav.SelectedItem = Nav.MenuItems[0];
     }
 
@@ -77,6 +84,32 @@ public sealed partial class MainWindow : Window
         Activate();
         // Activate だけでは、ほかのアプリのウィンドウの後ろに残ることがある
         NativeMethods.SetForegroundWindow(WinRT.Interop.WindowNative.GetWindowHandle(this));
+    }
+
+    private void UpdateContentMargin(NavigationViewDisplayMode mode) =>
+        ContentFrame.Margin = mode == NavigationViewDisplayMode.Minimal ? new Thickness(0, 44, 0, 0) : new Thickness(0);
+
+    private double _scale = 1;
+
+    private void ApplyScale(double scale)
+    {
+        _scale = scale;
+        if (AppWindow.Presenter is OverlappedPresenter presenter)
+        {
+            presenter.PreferredMinimumWidth = (int)(560 * scale);
+            presenter.PreferredMinimumHeight = (int)(520 * scale);
+        }
+        UpdateTitleBarInsets();
+    }
+
+    /// <summary>タイトルの文字が最小化・閉じるボタンの下に潜らないよう、ボタンの実際の幅だけ右を空ける。</summary>
+    private void UpdateTitleBarInsets()
+    {
+        var titleBar = AppWindow.TitleBar;
+        var left = titleBar.LeftInset / _scale;
+        var right = titleBar.RightInset / _scale;
+        if (right > 0)
+            AppTitleBar.Padding = new Thickness(16 + left, 0, right, 0);
     }
 
     public void Navigate(string tag)
@@ -157,4 +190,19 @@ internal static class NativeMethods
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
     internal static extern bool SetForegroundWindow(nint hwnd);
+
+    /// <summary>その点があるモニターの DPI。</summary>
+    internal static uint GetDpiForPoint(PointInt32 point)
+    {
+        var monitor = MonitorFromPoint(point, MonitorDefaultToNearest);
+        return GetDpiForMonitor(monitor, 0, out var dpiX, out _) == 0 ? dpiX : 96;
+    }
+
+    private const uint MonitorDefaultToNearest = 2;
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern nint MonitorFromPoint(PointInt32 point, uint flags);
+
+    [System.Runtime.InteropServices.DllImport("shcore.dll")]
+    private static extern int GetDpiForMonitor(nint monitor, int dpiType, out uint dpiX, out uint dpiY);
 }

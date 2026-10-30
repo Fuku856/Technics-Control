@@ -14,6 +14,7 @@ public sealed partial class HomePage : Page
     public HomePage()
     {
         InitializeComponent();
+        ResponsiveHelper.Attach(Scroller, RootPanel);
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)

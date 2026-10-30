@@ -4,8 +4,8 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:TechnicsControl.App.Controls"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls">
-    <ScrollViewer>
-        <StackPanel MaxWidth="760" Padding="36,8,36,36" Spacing="24">
+    <ScrollViewer x:Name="Scroller">
+        <StackPanel x:Name="RootPanel" MaxWidth="760" Padding="36,8,36,36" Spacing="24">
             <TextBlock Text="外音コントロール" Style="{ThemeResource TitleTextBlockStyle}" />
 
             <InfoBar x:Name="StatusBar" IsClosable="False">
@@ -39,7 +39,10 @@
 
             <TextBlock x:Name="ModeTitle" HorizontalAlignment="Center" Style="{ThemeResource SubtitleTextBlockStyle}" />
 
-            <controls:CircularDial x:Name="Dial" HorizontalAlignment="Center" ValueChanging="OnDialChanging" ValueCommitted="OnDialCommitted" />
+            <!-- ダイヤルは決まった大きさで描き、狭いときだけ縮める -->
+            <Viewbox StretchDirection="DownOnly" HorizontalAlignment="Center">
+                <controls:CircularDial x:Name="Dial" ValueChanging="OnDialChanging" ValueCommitted="OnDialCommitted" />
+            </Viewbox>
 
             <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
                 <ProgressRing x:Name="ApplyingRing" Width="16" Height="16" IsActive="False" />
