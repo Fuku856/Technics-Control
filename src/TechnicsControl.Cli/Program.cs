@@ -90,7 +90,8 @@ static async Task DumpAsync(TechnicsDevice device)
         var charge = await device.GetChargeErrorAsync(role);
         Console.WriteLine($"[{Side(role)}] 電池 {battery.Percent}%  FW {firmware}  使用 {usage.TotalMinutes / 60} 時間（主側 {usage.AgentMinutes / 60} 時間）  充電エラー 連続 {charge.Consecutive} / 累計 {charge.Total}");
     }
-    Console.WriteLine($"ケースの電池: {await device.GetCradleBatteryAsync()}%");
+    var cradle = await device.GetCradleBatteryAsync();
+    Console.WriteLine($"ケースの電池: {(cradle is { } percent ? $"{percent}%" : "不明")}");
     var codec = await device.GetCodecInfoAsync();
     Console.WriteLine($"コーデック: {codec.Type} {codec.SamplingFrequency} Hz");
     Console.WriteLine($"接続中の機器: {string.Join(", ", await device.GetConnectedDevicesAsync())}");
