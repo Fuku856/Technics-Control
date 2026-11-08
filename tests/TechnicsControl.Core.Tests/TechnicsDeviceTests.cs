@@ -161,6 +161,29 @@ public class TechnicsDeviceTests
         Assert.Equal(new BatteryLevel(EarbudRole.Partner, 72), await device.GetBatteryAsync(EarbudRole.Partner));
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(64)]
+    [InlineData(100)]
+    public async Task Cradle_battery_within_range_is_returned_as_is(byte percent)
+    {
+        var (_, device) = await ConnectAsync(e => e.CradleBattery = percent);
+        await using var _ = device;
+
+        Assert.Equal(percent, await device.GetCradleBatteryAsync());
+    }
+
+    [Theory]
+    [InlineData(101)]
+    [InlineData(255)]
+    public async Task Cradle_battery_out_of_range_is_unknown(byte raw)
+    {
+        var (_, device) = await ConnectAsync(e => e.CradleBattery = raw);
+        await using var _ = device;
+
+        Assert.Null(await device.GetCradleBatteryAsync());
+    }
+
     [Fact]
     public async Task Touch_operation_on_earbud_raises_change_event()
     {

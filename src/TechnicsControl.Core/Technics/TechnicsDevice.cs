@@ -127,8 +127,12 @@ public sealed class TechnicsDevice : IAsyncDisposable
         return new BatteryLevel((EarbudRole)p.At(7), p.At(8));
     }
 
-    public async Task<byte> GetCradleBatteryAsync(CancellationToken cancellationToken = default) =>
-        (await GetAsync(TechnicsCommands.GetCradleBattery, EarbudRole.Agent, cancellationToken).ConfigureAwait(false))[0];
+    /// <summary>ケースの電池（%）。0〜100 以外の値（0xFF など）は残量不明なので null を返す。公式アプリも同じ扱い。</summary>
+    public async Task<byte?> GetCradleBatteryAsync(CancellationToken cancellationToken = default)
+    {
+        var percent = (await GetAsync(TechnicsCommands.GetCradleBattery, EarbudRole.Agent, cancellationToken).ConfigureAwait(false))[0];
+        return percent <= 100 ? percent : null;
+    }
 
     public async Task<CodecInfo> GetCodecInfoAsync(CancellationToken cancellationToken = default) =>
         CodecInfo.FromPayload(await GetAsync(TechnicsCommands.GetCodecInfo, EarbudRole.Agent, cancellationToken).ConfigureAwait(false));

@@ -54,7 +54,7 @@ public sealed partial class HomePage : Page
         RightImage.Opacity = connected && Device.RightBattery is not null ? 1 : 0.35;
         LeftBatteryText.Text = BatteryText("L", connected ? Device.LeftBattery : null);
         RightBatteryText.Text = BatteryText("R", connected ? Device.RightBattery : null);
-        CaseBatteryText.Text = connected && Device.CaseBattery is { } cradle ? $"{cradle}%" : "";
+        CaseBatteryText.Text = !connected ? "" : Device.CaseBattery is { } cradle ? $"{cradle}%" : "—";
 
         ModeCard.IsEnabled = connected;
         ModeText.Text = connected ? Device.ModeText : "—";

@@ -16,6 +16,7 @@ internal sealed class FakeEarbuds : IRaceTransport
     public byte[] AgentAmbient { get; set; } = [0x00, 0x00];
     public byte[] PartnerAmbient { get; set; } = [0x00, 0x00];
     public bool HasPartner { get; set; } = true;
+    public byte CradleBattery { get; set; } = 0x64;
 
     /// <summary>主側への設定が相方に反映されない回数（左右がずれる状況の再現）。</summary>
     public int PartnerSyncFailures { get; set; }
@@ -84,6 +85,9 @@ internal sealed class FakeEarbuds : IRaceTransport
             case 0x0022:
                 Apply(request.Payload, partner, v => AgentAmbient = v, v => PartnerAmbient = v);
                 yield return Ok();
+                break;
+            case 0x0040:
+                yield return Ok(CradleBattery);
                 break;
             case 0x0CD6:
                 yield return Ok();
