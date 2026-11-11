@@ -62,6 +62,10 @@ public sealed partial class DeviceService : ObservableObject
     // 次の読み直しで、外音コントロールとアンビエントモードを左右から読んで比べるか（接続直後と、イヤホンのタッチ操作のあと）
     private bool _comparePartner;
 
+    // 次の読み直しでケースの電池を読むか。公式アプリと同じく、接続直後と相方がつながり直したとき（片耳をケースから出したとき）だけ読む。
+    // イヤホンが正しい値を返すのはその直後だけで、あとは不明（0xFF）になるため、定期的には読まない
+    private bool _readCradle;
+
     public DeviceService(DispatcherQueue dispatcher)
     {
         _dispatcher = dispatcher;
@@ -263,6 +267,9 @@ public sealed partial class DeviceService : ObservableObject
                     _ = DisconnectAsync("イヤホンとの接続が切れました。再接続します…");
             });
             _device = device;
+            // 前の接続で読んだケースの電池は使わない
+            CaseBattery = null;
+            _readCradle = true;
             State = ConnectionState.Connected;
             StatusMessage = "接続中";
             AgentIsRight = await device.IsAgentRightAsync();
@@ -302,7 +309,10 @@ public sealed partial class DeviceService : ObservableObject
             // 相方がつながっているかは主側だけで答える（中継しないので軽い）。新しくつながったら左右を比べ直す
             var hadPartner = device.HasPartner;
             if (await device.RefreshPartnerAsync() && !hadPartner)
+            {
                 _comparePartner = true;
+                _readCradle = true;
+            }
 
             // 公式アプリと同じく、ふだんは主側だけ読む（相方へはイヤホンが反映する）。
             // 左右を比べるのは接続直後とタッチ操作のあとだけ。画面からの変更は、送ったときに確かめている
@@ -339,11 +349,31 @@ public sealed partial class DeviceService : ObservableObject
             int? partner = device.HasPartner ? (await device.GetBatteryAsync(EarbudRole.Partner)).Percent : null;
             int? own = agent.Percent;
             (LeftBattery, RightBattery) = AgentIsRight ? (partner, own) : (own, partner);
-            CaseBattery = await device.GetCradleBatteryAsync();
+            if (_readCradle)
+            {
+                _readCradle = false;
+                await ReadCradleBatteryAsync(device);
+            }
             Codec = await device.GetCodecInfoAsync();
             return true;
         });
         DeviceStateChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// ケースの電池を読む。不明（0xFF）やエラーのときは、前に読めた値をそのまま残す（公式アプリも値を通知しないだけで、表示は変えない）。
+    /// 読めなくても、ほかの読み直しは続ける。
+    /// </summary>
+    private async Task ReadCradleBatteryAsync(TechnicsDevice device)
+    {
+        try
+        {
+            if (await device.GetCradleBatteryAsync() is { } percent)
+                CaseBattery = percent;
+        }
+        catch (Exception ex) when (ex is RaceException or TimeoutException or IndexOutOfRangeException)
+        {
+        }
     }
 
     /// <summary>
