@@ -36,7 +36,8 @@ public sealed class TrayMenuHost
         // 右クリックから開くまでの時間（Debug ビルドの出力ウィンドウで確認する）
         _menu.Opened += (_, _) => Debug.WriteLine($"[TrayMenu] opened in {_openWatch.ElapsedMilliseconds} ms");
         _window = new Window { Content = _root, Title = "Technics Control menu" };
-        _menu.Closed += (_, _) => _window.AppWindow.Hide();
+        // 終了でウィンドウを閉じたあとにメニューが閉じると、AppWindow はもう null になっている
+        _menu.Closed += (_, _) => _window.AppWindow?.Hide();
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(_window);
         _window.AppWindow.IsShownInSwitchers = false;
         if (_window.AppWindow.Presenter is OverlappedPresenter presenter)
