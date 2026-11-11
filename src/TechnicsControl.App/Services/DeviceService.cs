@@ -313,6 +313,12 @@ public sealed partial class DeviceService : ObservableObject
                 _comparePartner = true;
                 _readCradle = true;
             }
+            // ケースの電池は正しい値が返る時間が短いので、ほかより先に読む（あとの読み取りが失敗しても読み逃さない）
+            if (_readCradle)
+            {
+                _readCradle = false;
+                await ReadCradleBatteryAsync(device);
+            }
 
             // 公式アプリと同じく、ふだんは主側だけ読む（相方へはイヤホンが反映する）。
             // 左右を比べるのは接続直後とタッチ操作のあとだけ。画面からの変更は、送ったときに確かめている
@@ -349,11 +355,6 @@ public sealed partial class DeviceService : ObservableObject
             int? partner = device.HasPartner ? (await device.GetBatteryAsync(EarbudRole.Partner)).Percent : null;
             int? own = agent.Percent;
             (LeftBattery, RightBattery) = AgentIsRight ? (partner, own) : (own, partner);
-            if (_readCradle)
-            {
-                _readCradle = false;
-                await ReadCradleBatteryAsync(device);
-            }
             Codec = await device.GetCodecInfoAsync();
             return true;
         });
