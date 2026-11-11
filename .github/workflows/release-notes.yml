@@ -2,27 +2,49 @@ name: Release Notes
 
 # リリースが公開されたら、最新リリースのノートを Claude でまとめて書き換える。
 # 手動実行 (workflow_dispatch) した場合も最新リリースだけが対象。
+#
+# claude-code-action は release イベントに対応していない（Unsupported event type: release）。
+# そのためリリースの公開時は、このワークフローを workflow_dispatch で起動し直すだけにする
+# （GITHUB_TOKEN で起動した workflow_dispatch は、ワークフローとして実行される）。
 on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 対象のリリースのタグ（空なら最新のリリース）
+        required: false
+        default: ''
 
 permissions:
   contents: write
   pull-requests: read
   id-token: write
 
-concurrency:
-  group: release-notes
-  cancel-in-progress: false
-
 jobs:
-  release-notes:
+  dispatch:
+    if: github.event_name == 'release'
     runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ github.event.release.tag_name }}
+    steps:
+      - name: Start release notes as workflow_dispatch
+        # タグを ref にすると、そのリリースの時点のワークフローで動く
+        run: gh workflow run release-notes.yml --repo "$GITHUB_REPOSITORY" --ref "$TAG" -f tag="$TAG"
+
+  release-notes:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: release-notes
+      cancel-in-progress: false
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       REPO: ${{ github.repository }}
-      EVENT_TAG: ${{ github.event.release.tag_name }}
+      EVENT_TAG: ${{ inputs.tag }}
       WORK_DIR: .release-notes
     steps:
       - name: Resolve latest release
