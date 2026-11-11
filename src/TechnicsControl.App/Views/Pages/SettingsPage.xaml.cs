@@ -1,3 +1,4 @@
+using System.Reflection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -21,6 +22,7 @@ public sealed partial class SettingsPage : Page
     public SettingsPage()
     {
         InitializeComponent();
+        ShowAppInfo();
         // 狭いときは、横に並べたチェックボックスを縦にする
         ResponsiveHelper.Attach(Scroller, RootPanel,
             width => OutsideTogglePanel.Orientation = width < 600 ? Orientation.Vertical : Orientation.Horizontal);
@@ -30,6 +32,21 @@ public sealed partial class SettingsPage : Page
             _ncAdjustTimer.Stop();
             await CommitNcAdjustAsync((byte)(32 + (int)NcAdjustSlider.Value));
         };
+    }
+
+    /// <summary>設定の最下部に出す、アプリ名とバージョン（リリース時は -p:Version で入る）。</summary>
+    private void ShowAppInfo()
+    {
+        var assembly = typeof(SettingsPage).Assembly;
+        var version = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+                      ?? assembly.GetName().Version?.ToString(3)
+                      ?? "";
+        // 「1.2.3+コミットハッシュ」の後ろは出さない
+        var plus = version.IndexOf('+');
+        if (plus >= 0)
+            version = version[..plus];
+        AppNameText.Text = assembly.GetCustomAttribute<AssemblyProductAttribute>()?.Product ?? "Technics Control";
+        VersionText.Text = $"バージョン {version}";
     }
 
     protected override async void OnNavigatedTo(NavigationEventArgs e)
