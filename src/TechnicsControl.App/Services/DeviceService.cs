@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.UI.Dispatching;
 using TechnicsControl.Core.Discovery;
@@ -35,14 +36,35 @@ public sealed partial class DeviceService : ObservableObject
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan LevelPreviewInterval = TimeSpan.FromMilliseconds(500);
 
+    /// <summary>ウィンドウもクイックパネルも出していないときの読み直しの間隔（イヤホンとの通信を減らす）。</summary>
+    private static readonly TimeSpan HiddenRefreshInterval = TimeSpan.FromSeconds(60);
+
+    /// <summary>強さを変えてからこの間は、イヤホンから返ってくる同じモードの値（途中で送った値）で表示を戻さない。</summary>
+    private static readonly TimeSpan LevelEchoWindow = TimeSpan.FromMilliseconds(1500);
+
     private readonly DispatcherQueue _dispatcher;
     private readonly CancellationTokenSource _stop = new();
     private readonly SemaphoreSlim _wake = new(0);
+    // モードの切り替えと強さの確定は、確認と再送が入れ違わないよう 1 つずつ行う
+    private readonly SemaphoreSlim _outsideGate = new(1, 1);
     private TechnicsDevice? _device;
     private DateTime _lastLevelPreview = DateTime.MinValue;
     private int? _pendingLevel;
     private bool _previewScheduled;
     private UiMode? _requestedMode;
+    private bool _applyingMode;
+    private int _applyingCount;
+
+    // 画面から外音コントロールを変えるたびに増やす。読み直しの途中で変わったら、読んだ値は古いので使わない
+    private int _outsideVersion;
+    private DateTime _levelChangedAt = DateTime.MinValue;
+
+    // 次の読み直しで、外音コントロールとアンビエントモードを左右から読んで比べるか（接続直後と、イヤホンのタッチ操作のあと）
+    private bool _comparePartner;
+
+    // 次の読み直しでケースの電池を読むか。公式アプリと同じく、接続直後と相方がつながり直したとき（片耳をケースから出したとき）だけ読む。
+    // イヤホンが正しい値を返すのはその直後だけで、あとは不明（0xFF）になるため、定期的には読まない
+    private bool _readCradle;
 
     public DeviceService(DispatcherQueue dispatcher)
     {
@@ -63,7 +85,7 @@ public sealed partial class DeviceService : ObservableObject
     public partial OutsideControl? Outside { get; private set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Mode), nameof(ModeText))]
+    [NotifyPropertyChangedFor(nameof(Mode), nameof(Level), nameof(ModeText))]
     public partial AmbientSetting? Ambient { get; private set; }
 
     [ObservableProperty]
@@ -72,6 +94,10 @@ public sealed partial class DeviceService : ObservableObject
     /// <summary>NC／外音取り込みの設定が左右で一致しているか。null は未確認。</summary>
     [ObservableProperty]
     public partial bool? LeftRightMatch { get; private set; }
+
+    /// <summary>外音コントロールとアンビエントモード以外で、左右の値が食い違っている設定の名前（接続したときに確かめる）。</summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<string> MismatchedSettings { get; private set; } = [];
 
     [ObservableProperty]
     public partial int? LeftBattery { get; private set; }
@@ -102,12 +128,28 @@ public sealed partial class DeviceService : ObservableObject
         _ => null,
     };
 
-    public int? Level => Outside?.CurrentLevel;
+    /// <summary>今のモードで調整できる強さ。OFF とアテンションには強さがないので null。</summary>
+    public int? Level => Mode == UiMode.Attention ? null : Outside?.CurrentLevel;
 
     public string ModeText => Mode is { } mode ? ModeName(mode) : "—";
 
     /// <summary>ウィンドウを閉じているあいだ接続を切る設定（SettingsStore と同期）。</summary>
     public bool Paused { get; private set; }
+
+    /// <summary>ウィンドウかクイックパネルを表示しているか。表示していないあいだは読み直しを減らす。</summary>
+    public bool IsUiVisible
+    {
+        get;
+        set
+        {
+            if (field == value)
+                return;
+            field = value;
+            // 開いたときは、すぐに最新の状態を読む
+            if (value && _device is not null)
+                _wake.Release();
+        }
+    }
 
     public event Action? DeviceStateChanged;
 
@@ -142,20 +184,37 @@ public sealed partial class DeviceService : ObservableObject
     public async Task PauseAsync()
     {
         Paused = true;
-        await DisconnectAsync("接続を切っています（スマホのアプリと併用中）");
+        await DisconnectAsync(PausedMessage);
         State = ConnectionState.Paused;
     }
+
+    private const string PausedMessage = "接続を切っています（スマホのアプリと併用中）";
 
     private async Task LoopAsync(CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            if (_device is null && !Paused)
-                await TryConnectAsync(cancellationToken);
-            else if (_device is not null)
-                await RefreshAsync();
+            try
+            {
+                if (_device is null && !Paused)
+                    await TryConnectAsync(cancellationToken);
+                else if (_device is not null)
+                    await RefreshAsync();
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                // 想定外の例外でこのループが止まると、二度と再接続しなくなる。記録して切断し、次の周回でつなぎ直す
+                ErrorLog.Write(ex);
+                await DisconnectAsync($"エラーが起きたため接続し直します（{ex.Message}）");
+                State = Paused ? ConnectionState.Paused : ConnectionState.Error;
+                OnPropertyChanged(nameof(IsConnected));
+            }
 
-            var interval = _device is null ? RetryInterval : RefreshInterval;
+            var interval = _device is null ? RetryInterval : IsUiVisible ? RefreshInterval : HiddenRefreshInterval;
             try
             {
                 await _wake.WaitAsync(interval, cancellationToken);
@@ -186,28 +245,57 @@ public sealed partial class DeviceService : ObservableObject
             }
             DeviceName = target.Name;
             var device = await TechnicsDevice.ConnectAsync(target.BluetoothAddress, cancellationToken);
+            // つないでいるあいだに「接続を切る」が選ばれていたら（ウィンドウを閉じて 60 秒たったなど）、つながないでおく
+            if (Paused)
+            {
+                await device.DisposeAsync();
+                State = ConnectionState.Paused;
+                StatusMessage = PausedMessage;
+                return;
+            }
             // 主側への設定が相方に届かないときの最終手段として、相方への中継を許可する（実機で動作確認済み）
             device.AllowPartnerRelaySet = true;
-            device.OutsideControlChanged += value => _dispatcher.TryEnqueue(() => OnOutsideChangedByDevice(value));
-            device.Disconnected += error => _dispatcher.TryEnqueue(() => _ = DisconnectAsync("イヤホンとの接続が切れました。再接続します…"));
+            device.OutsideControlChanged += value => _dispatcher.TryEnqueue(() =>
+            {
+                if (_device == device)
+                    OnOutsideChangedByDevice(value);
+            });
+            // 自分から切ったときや、すでにつなぎ直したあとに届いた古い接続の切断は無視する
+            device.Disconnected += error => _dispatcher.TryEnqueue(() =>
+            {
+                if (_device == device)
+                    _ = DisconnectAsync("イヤホンとの接続が切れました。再接続します…");
+            });
             _device = device;
+            // 前の接続で読んだケースの電池は使わない
+            CaseBattery = null;
+            _readCradle = true;
             State = ConnectionState.Connected;
             StatusMessage = "接続中";
             AgentIsRight = await device.IsAgentRightAsync();
+            _comparePartner = true;
             await RefreshAsync();
+            await CheckLeftRightAsync();
         }
         catch (TransportException ex)
         {
             State = ex.ChannelBusy ? ConnectionState.Busy : ConnectionState.Error;
             StatusMessage = ex.Message;
         }
-        catch (Exception ex) when (ex is RaceException or TimeoutException or OperationCanceledException or IOException)
+        catch (Exception ex) when (ex is RaceException or TimeoutException or OperationCanceledException or IOException
+                                       or COMException or UnauthorizedAccessException or InvalidOperationException)
         {
             await DisconnectAsync($"接続できませんでした: {ex.Message}");
             State = ConnectionState.Error;
         }
         finally
         {
+            // 接続の途中で「接続を切る」が選ばれていたら、エラーではなく切断中として見せる
+            if (Paused && _device is null)
+            {
+                State = ConnectionState.Paused;
+                StatusMessage = PausedMessage;
+            }
             OnPropertyChanged(nameof(IsConnected));
         }
     }
@@ -217,21 +305,91 @@ public sealed partial class DeviceService : ObservableObject
     {
         await RunAsync(async device =>
         {
-            var outside = await device.ReadBothAsync(role => device.GetOutsideControlAsync(role));
-            var ambient = await device.ReadBothAsync(role => device.GetAmbientSettingAsync(role));
-            Outside = outside.Agent;
-            Ambient = ambient.Agent;
-            PartnerPresent = outside.PartnerPresent;
-            LeftRightMatch = outside.PartnerPresent ? outside.Matches && ambient.Matches : null;
+            var version = _outsideVersion;
+            // 相方がつながっているかは主側だけで答える（中継しないので軽い）。新しくつながったら左右を比べ直す
+            var hadPartner = device.HasPartner;
+            if (await device.RefreshPartnerAsync() && !hadPartner)
+            {
+                _comparePartner = true;
+                _readCradle = true;
+            }
+            // ケースの電池は正しい値が返る時間が短いので、ほかより先に読む（あとの読み取りが失敗しても読み逃さない）
+            if (_readCradle)
+            {
+                _readCradle = false;
+                await ReadCradleBatteryAsync(device);
+            }
+
+            // 公式アプリと同じく、ふだんは主側だけ読む（相方へはイヤホンが反映する）。
+            // 左右を比べるのは接続直後とタッチ操作のあとだけ。画面からの変更は、送ったときに確かめている
+            var compare = _comparePartner && device.HasPartner;
+            SyncedValue<OutsideControl> outside;
+            SyncedValue<AmbientSetting> ambient;
+            if (compare)
+            {
+                // 相方への反映待ちで一瞬ずれて見えるだけのときは、読み直してから判断する
+                outside = await device.ReadBothSettledAsync(role => device.GetOutsideControlAsync(role));
+                ambient = await device.ReadBothSettledAsync(role => device.GetAmbientSettingAsync(role));
+            }
+            else
+            {
+                outside = new SyncedValue<OutsideControl>(await device.GetOutsideControlAsync(), null, false);
+                ambient = new SyncedValue<AmbientSetting>(await device.GetAmbientSettingAsync(), null, false);
+            }
+            // 読んでいるあいだに画面から変えていたら、読んだ値は古い（表示が一瞬戻ってしまう）。次の読み直しに任せる
+            if (version == _outsideVersion && !IsApplying && !IsAdjustingLevel)
+            {
+                Outside = outside.Agent;
+                Ambient = ambient.Agent;
+                PartnerPresent = device.HasPartner;
+                if (!device.HasPartner)
+                    LeftRightMatch = null;
+                else if (compare && outside.PartnerPresent)
+                {
+                    LeftRightMatch = outside.Matches && ambient.Matches;
+                    _comparePartner = false;
+                }
+            }
 
             var agent = await device.GetBatteryAsync(EarbudRole.Agent);
             int? partner = device.HasPartner ? (await device.GetBatteryAsync(EarbudRole.Partner)).Percent : null;
             int? own = agent.Percent;
             (LeftBattery, RightBattery) = AgentIsRight ? (partner, own) : (own, partner);
-            CaseBattery = await device.GetCradleBatteryAsync();
             Codec = await device.GetCodecInfoAsync();
             return true;
         });
+        DeviceStateChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// ケースの電池を読む。不明（0xFF）やエラーのときは、前に読めた値をそのまま残す（公式アプリも値を通知しないだけで、表示は変えない）。
+    /// 読めなくても、ほかの読み直しは続ける。
+    /// </summary>
+    private async Task ReadCradleBatteryAsync(TechnicsDevice device)
+    {
+        try
+        {
+            if (await device.GetCradleBatteryAsync() is { } percent)
+                CaseBattery = percent;
+        }
+        catch (Exception ex) when (ex is RaceException or TimeoutException or IndexOutOfRangeException)
+        {
+        }
+    }
+
+    /// <summary>
+    /// 外音コントロールとアンビエントモード以外の設定が左右で同じか、接続したときに一度だけ確かめる（読むだけ）。
+    /// 公式アプリはどの設定も主側に送るだけで、相方へはイヤホンが反映するので、変更のたびには確かめない。
+    /// 外音コントロールとアンビエントモードは、接続直後とタッチ操作のあとの読み直しで LeftRightMatch に反映している。
+    /// </summary>
+    private async Task CheckLeftRightAsync()
+    {
+        var targets = TechnicsDevice.PairedSettings.Select(s => s.Id)
+            .Where(id => id is not (TechnicsCommands.GetOutsideControl or TechnicsCommands.GetAmbientMode)).ToArray();
+        var results = await RunAsync(d => d.CompareSettingsAsync(targets));
+        if (results is null)
+            return;
+        MismatchedSettings = [.. results.Where(r => r.IsMismatch).Select(r => r.Name)];
         DeviceStateChanged?.Invoke();
     }
 
@@ -242,21 +400,31 @@ public sealed partial class DeviceService : ObservableObject
     public async Task SetModeAsync(UiMode mode)
     {
         _requestedMode = mode;
-        if (IsApplying)
+        if (_applyingMode)
             return;
-        IsApplying = true;
+        _applyingMode = true;
+        BeginApplying();
         try
         {
             while (_requestedMode is { } next)
             {
-                _requestedMode = null;
-                await ApplyModeAsync(next);
+                // 強さの確定中なら、終わってから切り替える
+                await _outsideGate.WaitAsync();
+                try
+                {
+                    _requestedMode = null;
+                    await ApplyModeAsync(next);
+                }
+                finally
+                {
+                    _outsideGate.Release();
+                }
             }
         }
         finally
         {
-            IsApplying = false;
-            DeviceStateChanged?.Invoke();
+            _applyingMode = false;
+            EndApplying();
         }
     }
 
@@ -267,6 +435,7 @@ public sealed partial class DeviceService : ObservableObject
     {
         if (Outside is not { } current || mode == Mode)
             return;
+        _outsideVersion++;
         await RunAsync(async device =>
             {
                 var matched = true;
@@ -313,10 +482,14 @@ public sealed partial class DeviceService : ObservableObject
     {
         await Task.Delay(delay);
         _previewScheduled = false;
-        if (_pendingLevel is not { } level || WithLevel(level) is not { } value)
+        // モードの切り替え中は送らない（前のモードで送ると切り替えが戻る）
+        if (_applyingMode || _pendingLevel is not { } level || WithLevel(level) is not { } value)
             return;
         _pendingLevel = null;
         _lastLevelPreview = DateTime.UtcNow;
+        // 送った値を今の値として扱う（あとから届く古い値や、モードの切り替えで強さが戻らないように）
+        Outside = value;
+        MarkLevelChanged();
         await RunAsync(async device =>
         {
             await device.SendOutsideControlAsync(value);
@@ -330,9 +503,16 @@ public sealed partial class DeviceService : ObservableObject
         _pendingLevel = null;
         if (WithLevel(level) is not { } value)
             return;
-        IsApplying = true;
+        if (!_applyingMode)
+            Outside = value;
+        MarkLevelChanged();
+        BeginApplying();
+        await _outsideGate.WaitAsync();
         try
         {
+            // 待っているあいだにモードが切り替わったら、前のモードの強さは送らない
+            if (Outside?.Mode != value.Mode)
+                return;
             await RunAsync(async device =>
             {
                 var result = await device.SetOutsideControlAsync(value);
@@ -344,13 +524,38 @@ public sealed partial class DeviceService : ObservableObject
         }
         finally
         {
-            IsApplying = false;
-            DeviceStateChanged?.Invoke();
+            _outsideGate.Release();
+            MarkLevelChanged();
+            EndApplying();
         }
+    }
+
+    private bool IsAdjustingLevel => DateTime.UtcNow - _levelChangedAt < LevelEchoWindow;
+
+    private void MarkLevelChanged()
+    {
+        _outsideVersion++;
+        _levelChangedAt = DateTime.UtcNow;
+    }
+
+    private void BeginApplying()
+    {
+        _applyingCount++;
+        IsApplying = true;
+    }
+
+    private void EndApplying()
+    {
+        if (--_applyingCount == 0)
+            IsApplying = false;
+        DeviceStateChanged?.Invoke();
     }
 
     private OutsideControl? WithLevel(int level)
     {
+        // アテンションは強さを調整できない
+        if (Mode == UiMode.Attention)
+            return null;
         var clamped = (byte)Math.Clamp(level, OutsideControl.MinLevel, OutsideControl.MaxLevel);
         return Outside?.Mode switch
         {
@@ -371,7 +576,9 @@ public sealed partial class DeviceService : ObservableObject
         {
             return await action(device);
         }
-        catch (Exception ex) when (ex is RaceException or TimeoutException or IOException or InvalidOperationException or ArgumentException)
+        // 応答が想定より短いとき（IndexOutOfRange／Format）や、Bluetooth の API が返すエラー（COMException）も、操作の失敗として扱う
+        catch (Exception ex) when (ex is RaceException or TimeoutException or IOException or InvalidOperationException or ArgumentException
+                                       or IndexOutOfRangeException or FormatException or COMException or UnauthorizedAccessException)
         {
             if (device.Client.IsClosed)
                 await DisconnectAsync("イヤホンとの接続が切れました。再接続します…");
@@ -383,8 +590,13 @@ public sealed partial class DeviceService : ObservableObject
 
     private void OnOutsideChangedByDevice(OutsideControl value)
     {
+        // 強さを変えている途中に届く同じモードの通知は、途中で送った値が返ってきたもの。使うと表示が戻る
+        if (IsAdjustingLevel && value.Mode == Outside?.Mode)
+            return;
+        _outsideVersion++;
         Outside = value;
         // イヤホンのタッチ操作でも左右がずれていないか確かめる
+        _comparePartner = true;
         _wake.Release();
         DeviceStateChanged?.Invoke();
     }
@@ -399,6 +611,7 @@ public sealed partial class DeviceService : ObservableObject
             State = ConnectionState.Searching;
         StatusMessage = message;
         LeftRightMatch = null;
+        MismatchedSettings = [];
         OnPropertyChanged(nameof(IsConnected));
         DeviceStateChanged?.Invoke();
     }

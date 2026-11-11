@@ -74,39 +74,82 @@ public sealed partial class KeyCustomizePage : Page
         _ => Keymap.TalkingChoices,
     };
 
+    /// <summary>表の 1 行分。場面の見出しの行は Left / Right が null。</summary>
+    private sealed record KeymapRow(TextBlock Label, ComboBox? Left = null, ComboBox? Right = null);
+
+    private readonly List<KeymapRow> _rows = [];
+    private bool? _compact;
+
     private void BuildGrid()
     {
-        KeymapGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(160) });
-        KeymapGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        KeymapGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        AddRow(new TextBlock(), Header("左（L）"), Header("右（R）"));
-
         Scene? current = null;
         foreach (var (scene, gesture) in Slots)
         {
             if (scene != current)
             {
                 current = scene;
-                var title = new TextBlock
+                _rows.Add(new KeymapRow(new TextBlock
                 {
                     Text = scene switch { Scene.Music => "音楽再生中", Scene.IncomingCall => "着信時", _ => "通話中" },
                     Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
                     Margin = new Thickness(0, 12, 0, 0),
-                };
-                AddRow(title);
+                }));
             }
             var label = new TextBlock { Text = GestureName(gesture), VerticalAlignment = VerticalAlignment.Center };
-            var left = CreateBox(KeySide.Left, scene, gesture);
-            var right = CreateBox(KeySide.Right, scene, gesture);
-            AddRow(label, left, right);
+            _rows.Add(new KeymapRow(label, CreateBox(KeySide.Left, scene, gesture), CreateBox(KeySide.Right, scene, gesture)));
+        }
+        // 割り当ての名前は長いので、左右を横に並べきれない幅では縦に並べる
+        ResponsiveHelper.Attach(Scroller, RootPanel, width => Layout(width < 640));
+        Layout(false);
+    }
+
+    private void Layout(bool compact)
+    {
+        if (_compact == compact)
+            return;
+        _compact = compact;
+        KeymapGrid.Children.Clear();
+        KeymapGrid.RowDefinitions.Clear();
+        KeymapGrid.ColumnDefinitions.Clear();
+        KeymapGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        KeymapGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        if (!compact)
+        {
+            KeymapGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            AddRow(new TextBlock(), Header("左（L）"), Header("右（R）"));
+        }
+
+        foreach (var row in _rows)
+        {
+            if (row.Left is null || row.Right is null)
+                AddRow(row.Label);
+            else if (compact)
+            {
+                // 狭いとき: 「1 回タップ」の下に L と R を 1 行ずつ
+                AddRow(row.Label);
+                AddRow(SideLabel("L"), row.Left);
+                AddRow(SideLabel("R"), row.Right);
+            }
+            else
+                AddRow(row.Label, row.Left, row.Right);
         }
     }
 
-    private static TextBlock Header(string text) => new()
+    private static TextBlock SideLabel(string text) => new()
     {
         Text = text,
         Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-        HorizontalAlignment = HorizontalAlignment.Left,
+        VerticalAlignment = VerticalAlignment.Center,
+        Margin = new Thickness(12, 0, 0, 0),
+    };
+
+    // 左右の見出しは、下に並ぶ選択ボックスの中央に置く
+    private static TextBlock Header(string text) => new()
+    {
+        Text = text,
+        Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
+        FontSize = 16,
+        HorizontalAlignment = HorizontalAlignment.Center,
     };
 
     private ComboBox CreateBox(KeySide side, Scene scene, KeyGesture gesture)
@@ -127,6 +170,8 @@ public sealed partial class KeyCustomizePage : Page
         {
             Grid.SetRow(cells[column], row);
             Grid.SetColumn(cells[column], column);
+            // 1 つだけの行（見出し）は表の幅いっぱいに
+            Grid.SetColumnSpan(cells[column], cells.Length == 1 ? KeymapGrid.ColumnDefinitions.Count : 1);
             KeymapGrid.Children.Add(cells[column]);
         }
     }

@@ -14,6 +14,7 @@ public sealed partial class HomePage : Page
     public HomePage()
     {
         InitializeComponent();
+        ResponsiveHelper.Attach(Scroller, RootPanel);
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -43,9 +44,9 @@ public sealed partial class HomePage : Page
         ToolTipService.SetToolTip(CodecIcon, Device.Codec is { } c ? $"{c.Type} {c.SamplingFrequency / 1000.0:0.#} kHz" : null);
 
         var color = App.Settings.BodyColor;
-        SetImage(LeftImage, Assets.DeviceImage(color, 'l'));
-        SetImage(RightImage, Assets.DeviceImage(color, 'r'));
-        SetImage(CaseImage, Assets.DeviceImage(color, 'c'));
+        SetImage(LeftImage, Assets.DeviceBitmap(color, 'l'));
+        SetImage(RightImage, Assets.DeviceBitmap(color, 'r'));
+        SetImage(CaseImage, Assets.DeviceBitmap(color, 'c'));
 
         // 片耳だけのとき（ケースの中など）は、つながっていない側を薄く表示する
         var connected = Device.IsConnected;
@@ -53,7 +54,7 @@ public sealed partial class HomePage : Page
         RightImage.Opacity = connected && Device.RightBattery is not null ? 1 : 0.35;
         LeftBatteryText.Text = BatteryText("L", connected ? Device.LeftBattery : null);
         RightBatteryText.Text = BatteryText("R", connected ? Device.RightBattery : null);
-        CaseBatteryText.Text = connected && Device.CaseBattery is { } cradle ? $"{cradle}%" : "";
+        CaseBatteryText.Text = !connected ? "" : Device.CaseBattery is { } cradle ? $"{cradle}%" : "—";
 
         ModeCard.IsEnabled = connected;
         ModeText.Text = connected ? Device.ModeText : "—";
@@ -64,11 +65,10 @@ public sealed partial class HomePage : Page
         StatusView.ApplySync(SyncIcon, SyncText, Device);
     }
 
-    private static void SetImage(Image image, Uri uri)
+    private static void SetImage(Image image, BitmapImage bitmap)
     {
-        if (image.Source is BitmapImage { UriSource: { } current } && current == uri)
-            return;
-        image.Source = new BitmapImage(uri);
+        if (!ReferenceEquals(image.Source, bitmap))
+            image.Source = bitmap;
     }
 
     private static string BatteryText(string side, int? percent) => percent is { } p ? $"{side}  {p}%" : $"{side}  未接続";

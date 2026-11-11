@@ -31,11 +31,17 @@ public sealed partial class SoundModePage : Page
     public SoundModePage()
     {
         InitializeComponent();
+        ResponsiveHelper.Attach(Scroller, RootPanel);
         foreach (var (mode, name, icon) in Modes)
         {
-            var content = new StackPanel { Width = 120, Height = 96, Spacing = 8, Padding = new Thickness(8) };
+            // 項目はすべて同じ大きさで並ぶので、いちばん長い名前（バスエンハンサー＋）が 2 行で収まる高さにする
+            var content = new StackPanel { Width = 128, Height = 108, Spacing = 8, Padding = new Thickness(8) };
             content.Children.Add(new BitmapIcon { UriSource = Assets.Icon(icon), ShowAsMonochrome = true, Width = 36, Height = 36 });
-            content.Children.Add(new TextBlock { Text = name, HorizontalAlignment = HorizontalAlignment.Center, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center });
+            content.Children.Add(new TextBlock
+            {
+                Text = name, HorizontalAlignment = HorizontalAlignment.Center, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center,
+                MaxLines = 2, TextTrimming = TextTrimming.CharacterEllipsis,
+            });
             var item = new GridViewItem { Content = content, Tag = mode };
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(item, name);
             ModeGrid.Items.Add(item);
@@ -78,13 +84,13 @@ public sealed partial class SoundModePage : Page
             _current = mode;
             ModeGrid.SelectedItem = ModeGrid.Items.OfType<GridViewItem>().FirstOrDefault(i => (SoundMode)i.Tag == mode);
             CurrentText.Text = $"現在: {ModeName(mode)}";
-            SyncIcon.Visibility = Visibility.Visible;
-            (SyncIcon.Glyph, SyncText.Text, SyncIcon.Style) = (matches, partnerPresent) switch
+            // 左右が食い違っているときだけ知らせる（一致していれば何も出さない）
+            StatusView.Show(SyncIcon, SyncText, (matches, partnerPresent) switch
             {
-                (true, true) => ("", "左右の設定は一致しています", (Style)Application.Current.Resources["SyncOkIconStyle"]),
-                (false, _) => ("", "左右の設定が一致していません", (Style)Application.Current.Resources["SyncWarningIconStyle"]),
-                _ => ("", "片方のイヤホンだけがつながっています", (Style)Application.Current.Resources["SyncInfoIconStyle"]),
-            };
+                (false, _) => ("\uE7BA", "左右の設定が一致していません", (Style)Application.Current.Resources["SyncWarningIconStyle"]),
+                (true, false) => ("\uE946", "片方のイヤホンだけがつながっています", (Style)Application.Current.Resources["SyncInfoIconStyle"]),
+                _ => null,
+            });
         }
         finally
         {

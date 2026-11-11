@@ -1,0 +1,105 @@
+# GitHub の Releases から手動でリリースを作成（公開）したときに、
+# アプリをビルドしてインストーラーを作り、そのリリースに添付する。
+#
+# - main などから作成したリリース: 通常リリース
+# - dev ブランチから作成したリリース: プレリリース（未設定なら自動でプレリリースに変更する）
+#
+# タグは SemVer 形式にする（例: v1.2.0 / dev からは v1.3.0-beta.1）。
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      TAG: ${{ github.event.release.tag_name }}
+      TARGET: ${{ github.event.release.target_commitish }}
+      PRERELEASE: ${{ github.event.release.prerelease }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          version="${TAG#v}"
+          if [[ ! "$version" =~ ^([0-9]+\.[0-9]+\.[0-9]+)(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::タグ '$TAG' が SemVer 形式ではありません（例: v1.2.0, v1.3.0-beta.1）"
+            exit 1
+          fi
+          numeric="${BASH_REMATCH[1]}.0"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "numeric=$numeric" >> "$GITHUB_OUTPUT"
+          echo "Version: $version ($numeric)"
+
+      - name: Mark dev releases as prerelease
+        if: env.TARGET == 'dev' && env.PRERELEASE != 'true'
+        shell: bash
+        run: |
+          echo "::notice::dev ブランチからのリリースのため、プレリリースに変更します"
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --prerelease
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Test
+        run: dotnet test tests/TechnicsControl.Core.Tests/TechnicsControl.Core.Tests.csproj -c Release
+
+      - name: Publish app
+        run: >
+          dotnet publish src/TechnicsControl.App/TechnicsControl.App.csproj
+          -c Release
+          -p:Platform=x64
+          -p:Version=${{ steps.version.outputs.version }}
+          -p:AssemblyVersion=${{ steps.version.outputs.numeric }}
+          -p:FileVersion=${{ steps.version.outputs.numeric }}
+          -p:DebugType=None
+          -p:DebugSymbols=false
+          -o artifacts/publish
+
+      # TechnicsControl.pri（XAML の索引）が無いと、インストール後に起動直後に落ちる（0xc000027b）
+      - name: Verify publish output
+        shell: pwsh
+        run: |
+          if (-not (Test-Path artifacts/publish/TechnicsControl.pri)) { throw "publish の出力に TechnicsControl.pri がありません" }
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iscc = Get-ChildItem "${env:ProgramFiles(x86)}\Inno Setup*", "$env:ProgramFiles\Inno Setup*" -Filter ISCC.exe -Recurse -ErrorAction SilentlyContinue |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $iscc) { throw "ISCC.exe が見つかりません" }
+          & $iscc `
+            "/DAppVersion=${{ steps.version.outputs.version }}" `
+            "/DAppVersionNumeric=${{ steps.version.outputs.numeric }}" `
+            installer/TechnicsControl.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload installer to release
+        shell: bash
+        run: gh release upload "$TAG" artifacts/installer/*.exe --repo "$GITHUB_REPOSITORY" --clobber
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TechnicsControl-${{ steps.version.outputs.version }}-setup-x64
+          path: artifacts/installer/*.exe

@@ -7,3 +7,6 @@ obj/
 # Official app packages (large; extract assets with tools/AssetExtractor instead)
 *.apk
 *.xapk
+
+# Release artifacts (publish output / installer)
+artifacts/

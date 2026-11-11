@@ -28,18 +28,29 @@ internal static class StatusView
         retry.Visibility = device.State == ConnectionState.Searching ? Visibility.Collapsed : Visibility.Visible;
     }
 
+    /// <summary>
+    /// 左右の設定が食い違っているときだけ知らせる。一致しているとき・確認中は何も出さない（片耳だけのときはそれを知らせる）。
+    /// </summary>
     public static void ApplySync(FontIcon icon, TextBlock text, DeviceService device)
     {
-        var visible = device.IsConnected;
-        icon.Visibility = text.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
         // 色は App.xaml のスタイル（ThemeResource）で指定し、要素ごとのテーマに追従させる
-        (icon.Glyph, text.Text, icon.Style) = device.LeftRightMatch switch
+        (string Glyph, string Text, Style Style)? status = !device.IsConnected ? null : device.LeftRightMatch switch
         {
-            true => ("\uE73E", "左右の設定は一致しています", Style("SyncOkIconStyle")),
             false => ("\uE7BA", "左右の設定が一致していません", Style("SyncWarningIconStyle")),
-            null when device.IsConnected && !device.PartnerPresent => ("\uE946", "片方のイヤホンだけがつながっています", Style("SyncInfoIconStyle")),
-            _ => ("\uE946", "左右の設定を確認しています…", Style("SyncInfoIconStyle")),
+            true when device.MismatchedSettings.Count > 0 =>
+                ("\uE7BA", $"左右で違う設定があります（{string.Join("、", device.MismatchedSettings)}）", Style("SyncWarningIconStyle")),
+            null when !device.PartnerPresent => ("\uE946", "片方のイヤホンだけがつながっています", Style("SyncInfoIconStyle")),
+            _ => null,
         };
+        Show(icon, text, status);
+    }
+
+    /// <summary>状態を表示する。null なら隠す。</summary>
+    public static void Show(FontIcon icon, TextBlock text, (string Glyph, string Text, Style Style)? status)
+    {
+        icon.Visibility = text.Visibility = status is null ? Visibility.Collapsed : Visibility.Visible;
+        if (status is { } s)
+            (icon.Glyph, text.Text, icon.Style) = s;
     }
 
     private static Style Style(string key) => (Style)Application.Current.Resources[key];

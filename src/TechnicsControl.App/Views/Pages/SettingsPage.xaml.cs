@@ -1,3 +1,4 @@
+using System.Reflection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -21,12 +22,31 @@ public sealed partial class SettingsPage : Page
     public SettingsPage()
     {
         InitializeComponent();
+        ShowAppInfo();
+        // 狭いときは、横に並べたチェックボックスを縦にする
+        ResponsiveHelper.Attach(Scroller, RootPanel,
+            width => OutsideTogglePanel.Orientation = width < 600 ? Orientation.Vertical : Orientation.Horizontal);
         // スライダーを動かし終えてから送る
         _ncAdjustTimer.Tick += async (_, _) =>
         {
             _ncAdjustTimer.Stop();
             await CommitNcAdjustAsync((byte)(32 + (int)NcAdjustSlider.Value));
         };
+    }
+
+    /// <summary>設定の最下部に出す、アプリ名とバージョン（リリース時は -p:Version で入る）。</summary>
+    private void ShowAppInfo()
+    {
+        var assembly = typeof(SettingsPage).Assembly;
+        var version = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+                      ?? assembly.GetName().Version?.ToString(3)
+                      ?? "";
+        // 「1.2.3+コミットハッシュ」の後ろは出さない
+        var plus = version.IndexOf('+');
+        if (plus >= 0)
+            version = version[..plus];
+        AppNameText.Text = assembly.GetCustomAttribute<AssemblyProductAttribute>()?.Product ?? "Technics Control";
+        VersionText.Text = $"バージョン {version}";
     }
 
     protected override async void OnNavigatedTo(NavigationEventArgs e)
@@ -66,10 +86,12 @@ public sealed partial class SettingsPage : Page
 
         await Device.RunAsync(async d =>
         {
+            // 公式アプリと同じく、機種 ID の機能ビットで項目の表示を決める（AZ80 は LED の点滅なし）
+            var caps = await d.GetCapabilitiesAsync();
             var multiPoint = await d.GetMultiPointAsync();
             var wearing = await d.GetWearingDetectionAsync();
             var autoPowerOff = await d.GetAutoPowerOffAsync();
-            var led = await d.GetLedFlashAsync();
+            var led = caps.LedFlash && await d.GetLedFlashAsync();
             var a2dp = await d.GetA2dpOptionAsync();
             var ncAdjust = await d.GetNoiseCancelingAdjustAsync();
             var ambient = await d.GetAmbientSettingAsync();
@@ -79,6 +101,9 @@ public sealed partial class SettingsPage : Page
             _loading = true;
             try
             {
+                LedCard.Visibility = caps.LedFlash ? Visibility.Visible : Visibility.Collapsed;
+                KeyCustomizeCard.Visibility = caps.KeyCustomize || caps.KeyEnable ? Visibility.Visible : Visibility.Collapsed;
+                OutsideToggleExpander.Visibility = caps.OutsideToggle ? Visibility.Visible : Visibility.Collapsed;
                 MultiPointBox.SelectedIndex = (int)multiPoint;
                 ShowWearing(wearing);
                 _autoPowerOffMinutes = autoPowerOff.Minutes;

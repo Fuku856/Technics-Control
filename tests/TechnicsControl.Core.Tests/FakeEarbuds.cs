@@ -16,11 +16,15 @@ internal sealed class FakeEarbuds : IRaceTransport
     public byte[] AgentAmbient { get; set; } = [0x00, 0x00];
     public byte[] PartnerAmbient { get; set; } = [0x00, 0x00];
     public bool HasPartner { get; set; } = true;
+    public byte CradleBattery { get; set; } = 0x64;
 
     /// <summary>主側への設定が相方に反映されない回数（左右がずれる状況の再現）。</summary>
     public int PartnerSyncFailures { get; set; }
 
     public List<RacePacket> Sent { get; } = [];
+
+    /// <summary>相方の外音コントロールを読まれた直後に呼ぶ（相方への反映が遅れる状況の再現）。</summary>
+    public Action? AfterPartnerOutsideRead { get; set; }
 
     public Task SendAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken)
     {
@@ -68,6 +72,8 @@ internal sealed class FakeEarbuds : IRaceTransport
                 break;
             case 0x000A:
                 yield return Ok(partner ? PartnerOutside : AgentOutside);
+                if (partner)
+                    AfterPartnerOutsideRead?.Invoke();
                 break;
             case 0x000B:
                 Apply(request.Payload, partner, v => AgentOutside = v, v => PartnerOutside = v);
@@ -79,6 +85,9 @@ internal sealed class FakeEarbuds : IRaceTransport
             case 0x0022:
                 Apply(request.Payload, partner, v => AgentAmbient = v, v => PartnerAmbient = v);
                 yield return Ok();
+                break;
+            case 0x0040:
+                yield return Ok(CradleBattery);
                 break;
             case 0x0CD6:
                 yield return Ok();

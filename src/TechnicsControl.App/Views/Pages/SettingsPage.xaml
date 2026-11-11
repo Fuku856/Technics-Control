@@ -10,8 +10,8 @@
         <x:Double x:Key="SettingsCardSpacing">4</x:Double>
     </Page.Resources>
 
-    <ScrollViewer>
-        <StackPanel MaxWidth="860" Padding="36,8,36,36" Spacing="{StaticResource SettingsCardSpacing}">
+    <ScrollViewer x:Name="Scroller">
+        <StackPanel x:Name="RootPanel" MaxWidth="860" Padding="36,8,36,36" Spacing="{StaticResource SettingsCardSpacing}">
             <TextBlock Text="設定" Style="{ThemeResource TitleTextBlockStyle}" Margin="0,0,0,8" />
 
             <InfoBar x:Name="StatusBar" IsClosable="False">
@@ -45,7 +45,7 @@
                 </toolkit:SettingsExpander>
 
                 <TextBlock Text="製品コントロール" Style="{StaticResource CategoryHeaderStyle}" />
-                <toolkit:SettingsCard Header="タッチセンサーのカスタマイズ" Description="タッチ操作の有効／無効と、左右のキー割り当て" IsClickEnabled="True" Click="OnKeyCustomizeClick">
+                <toolkit:SettingsCard x:Name="KeyCustomizeCard" Header="タッチセンサーのカスタマイズ" Description="タッチ操作の有効／無効と、左右のキー割り当て" IsClickEnabled="True" Click="OnKeyCustomizeClick">
                     <toolkit:SettingsCard.HeaderIcon><BitmapIcon UriSource="ms-appx:///Assets/Official/Icons/Dark/ic_single_tap.png" ShowAsMonochrome="True" /></toolkit:SettingsCard.HeaderIcon>
                 </toolkit:SettingsCard>
                 <toolkit:SettingsExpander Header="ヘッドホン装着検知" Description="ヘッドホンを外したときの動作">
@@ -73,7 +73,7 @@
                         <ComboBoxItem Content="60 分" />
                     </ComboBox>
                 </toolkit:SettingsCard>
-                <toolkit:SettingsCard Header="LED の点滅">
+                <toolkit:SettingsCard x:Name="LedCard" Visibility="Collapsed" Header="LED の点滅" Description="オン: 電源が入っているあいだ、イヤホンの LED が常に点滅します。オフ: スマホなどと接続中は LED が消灯します（電話の着信時を除く）">
                     <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE781;" /></toolkit:SettingsCard.HeaderIcon>
                     <ToggleSwitch x:Name="LedSwitch" Toggled="OnLedChanged" />
                 </toolkit:SettingsCard>
@@ -93,6 +93,10 @@
 
                 <TextBlock Text="外音コントロール" Style="{StaticResource CategoryHeaderStyle}" />
                 <toolkit:SettingsCard Header="ノイズキャンセリングの最適化" Description="ノイズキャンセリングの効き具合を微調整する（左右とも同じ値にそろえます）">
+                    <!-- 操作部分が横に長いので、カードが狭いときは見出しの下に回す（既定の 476 では見出しが細く押しつぶされる） -->
+                    <toolkit:SettingsCard.Resources>
+                        <x:Double x:Key="SettingsCardWrapThreshold">700</x:Double>
+                    </toolkit:SettingsCard.Resources>
                     <toolkit:SettingsCard.HeaderIcon><BitmapIcon UriSource="ms-appx:///Assets/Official/Icons/Dark/ic_noise_cancellation_regular_96px.png" ShowAsMonochrome="True" /></toolkit:SettingsCard.HeaderIcon>
                     <StackPanel Orientation="Horizontal" Spacing="12">
                         <TextBlock x:Name="NcAdjustText" VerticalAlignment="Center" MinWidth="64" TextAlignment="Right" />
@@ -113,11 +117,11 @@
                         </toolkit:SettingsCard>
                     </toolkit:SettingsExpander.Items>
                 </toolkit:SettingsExpander>
-                <toolkit:SettingsExpander Header="外音コントロールの操作設定" Description="タッチ操作で切り替えるモード（2 つ以上。左右とも同じ値にそろえます）">
+                <toolkit:SettingsExpander x:Name="OutsideToggleExpander" Header="外音コントロールの操作設定" Description="タッチ操作で切り替えるモード（2 つ以上。左右とも同じ値にそろえます）">
                     <toolkit:SettingsExpander.HeaderIcon><FontIcon Glyph="&#xE8AB;" /></toolkit:SettingsExpander.HeaderIcon>
                     <toolkit:SettingsExpander.Items>
                         <toolkit:SettingsCard ContentAlignment="Left">
-                            <StackPanel Orientation="Horizontal" Spacing="24">
+                            <StackPanel x:Name="OutsideTogglePanel" Orientation="Horizontal" Spacing="24">
                                 <CheckBox x:Name="ToggleNcCheck" Content="ノイズキャンセリング" Click="OnOutsideToggleChanged" />
                                 <CheckBox x:Name="ToggleAmbientCheck" Content="外音取り込み" Click="OnOutsideToggleChanged" />
                                 <CheckBox x:Name="ToggleOffCheck" Content="OFF" Click="OnOutsideToggleChanged" />
@@ -170,6 +174,15 @@
                 <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8CD;" /></toolkit:SettingsCard.HeaderIcon>
                 <ToggleSwitch x:Name="DisconnectSwitch" Toggled="OnDisconnectChanged" />
             </toolkit:SettingsCard>
+
+            <StackPanel HorizontalAlignment="Center" Spacing="2" Margin="0,32,0,0">
+                <TextBlock x:Name="AppNameText" HorizontalAlignment="Center" TextAlignment="Center"
+                           Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                <TextBlock x:Name="VersionText" HorizontalAlignment="Center" TextAlignment="Center"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{ThemeResource CaptionTextBlockStyle}" />
+                <TextBlock Text="Created by Fuku856" HorizontalAlignment="Center" TextAlignment="Center"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{ThemeResource CaptionTextBlockStyle}" />
+            </StackPanel>
         </StackPanel>
     </ScrollViewer>
 </Page>

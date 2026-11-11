@@ -13,11 +13,12 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
+        <!-- 右の余白（最小化・閉じるボタンの分）は MainWindow.xaml.cs でタイトルバーの実際の幅から決める -->
         <Grid x:Name="AppTitleBar" Height="48" Padding="16,0,140,0">
             <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                 <Image x:Name="TitleBarIcon" Width="18" Height="18" />
                 <TextBlock x:Name="TitleText" Text="Technics Control" Style="{ThemeResource CaptionTextBlockStyle}"
-                           Foreground="{ThemeResource TextFillColorPrimaryBrush}" VerticalAlignment="Center" />
+                           Foreground="{ThemeResource TextFillColorPrimaryBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
             </StackPanel>
         </Grid>
 
@@ -27,8 +28,10 @@
             IsSettingsVisible="False"
             IsBackButtonVisible="Auto"
             IsPaneToggleButtonVisible="True"
-            PaneDisplayMode="Left"
+            PaneDisplayMode="Auto"
             OpenPaneLength="220"
+            ExpandedModeThresholdWidth="900"
+            CompactModeThresholdWidth="641"
             SelectionChanged="OnNavSelectionChanged"
             BackRequested="OnBackRequested">
             <NavigationView.MenuItems>

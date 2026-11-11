@@ -11,17 +11,27 @@ namespace TechnicsControl.App.Views;
 /// <summary>トレイアイコンの左クリックで、タスクバーの上に出す小さなパネル。</summary>
 public sealed partial class QuickPanelWindow : Window
 {
-    private const int PanelWidth = 440;
-    private const int PanelHeight = 300;
+    // モードの 4 つのボタンに「トランスペアレント」まで全部収まる幅（狭い表示: 1 つ約 120）
+    private const int PanelWidth = 520;
+    private const int MinPanelHeight = 200;
+    private const int FirstShowHeight = 300;
+    private const int ScreenMargin = 12;
+    // フォーカスが外れて閉じた直後のトレイのクリックは「閉じる」とみなす時間
+    private const int AutoHideGraceMs = 300;
 
     private readonly DispatcherTimer _commitTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
     private bool _updating;
+    private long? _autoHiddenAt;
+    private RectInt32 _workArea;
+    private double _scale = 1;
 
     private DeviceService Device => App.Device;
 
     public QuickPanelWindow()
     {
         InitializeComponent();
+        LevelSlider.ValueChanged += OnLevelChanged;
+        ResponsiveHelper.SetCompact(ModeSelector, true);
         AppWindow.IsShownInSwitchers = false;
         AppWindow.SetIcon(Assets.AppIconPath);
         if (AppWindow.Presenter is OverlappedPresenter presenter)
@@ -36,9 +46,14 @@ public sealed partial class QuickPanelWindow : Window
         // フォーカスが外れたら閉じる（タスクバーのフライアウトと同じ振る舞い）
         Activated += (_, args) =>
         {
-            if (args.WindowActivationState == WindowActivationState.Deactivated)
+            if (args.WindowActivationState == WindowActivationState.Deactivated && IsShown)
+            {
+                _autoHiddenAt = Environment.TickCount64;
                 HidePanel();
+            }
         };
+        // InfoBar の開閉などで中身の高さが変わったら、ウィンドウの高さを合わせ直す
+        RootGrid.SizeChanged += (_, _) => FitHeight();
         _commitTimer.Tick += async (_, _) =>
         {
             _commitTimer.Stop();
@@ -50,21 +65,52 @@ public sealed partial class QuickPanelWindow : Window
 
     public bool IsShown { get; private set; }
 
+    /// <summary>フォーカスが外れて自動で閉じたばかりか。</summary>
+    public bool WasJustAutoHidden => Environment.TickCount64 - _autoHiddenAt < AutoHideGraceMs;
+
     public void ShowPanel()
     {
-        // カーソルのあるディスプレイの作業領域の右下（タスクバーの上）に出す
+        // カーソルのあるディスプレイの作業領域の右下（タスクバーの上）に出す。
+        // 拡大率は今いるモニターではなく、出す先のモニターのものを使う
         var cursor = NativeCursor.Position();
-        var area = DisplayArea.GetFromPoint(cursor, DisplayAreaFallback.Primary).WorkArea;
-        var scale = NativeMethods.GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)) / 96.0;
-        var width = (int)(PanelWidth * scale);
-        var height = (int)(PanelHeight * scale);
-        var margin = (int)(12 * scale);
-        AppWindow.MoveAndResize(new RectInt32(area.X + area.Width - width - margin, area.Y + area.Height - height - margin, width, height));
+        _workArea = DisplayArea.GetFromPoint(cursor, DisplayAreaFallback.Primary).WorkArea;
+        _scale = NativeMethods.GetDpiForPoint(cursor) / 96.0;
         Update();
+        Place(MeasureHeight());
         AppWindow.Show();
         Activate();
         IsShown = true;
         _ = Device.RefreshAsync();
+    }
+
+    /// <summary>中身に必要な高さ（DIP）。初めて開くときはまだ測れないので仮の高さにし、読み込み後の SizeChanged で合わせ直す。</summary>
+    private double MeasureHeight()
+    {
+        if (RootGrid.XamlRoot is null)
+            return FirstShowHeight;
+        RootGrid.Measure(new Windows.Foundation.Size(PanelWidth, double.PositiveInfinity));
+        return Math.Max(MinPanelHeight, RootGrid.DesiredSize.Height);
+    }
+
+    private void FitHeight()
+    {
+        if (!IsShown)
+            return;
+        var height = MeasureHeight();
+        if (Math.Abs(height * _scale - AppWindow.ClientSize.Height) > 1)
+            Place(height);
+    }
+
+    private void Place(double height)
+    {
+        // MoveAndResize は枠を含めた大きさなので、枠の分を足す
+        var borderWidth = AppWindow.Size.Width - AppWindow.ClientSize.Width;
+        var borderHeight = AppWindow.Size.Height - AppWindow.ClientSize.Height;
+        var width = (int)Math.Ceiling(PanelWidth * _scale) + borderWidth;
+        var margin = (int)(ScreenMargin * _scale);
+        var pixels = Math.Min((int)Math.Ceiling(height * _scale) + borderHeight, _workArea.Height - margin * 2);
+        AppWindow.MoveAndResize(new RectInt32(
+            _workArea.X + _workArea.Width - width - margin, _workArea.Y + _workArea.Height - pixels - margin, width, pixels));
     }
 
     public void HidePanel()
@@ -105,7 +151,7 @@ public sealed partial class QuickPanelWindow : Window
             LevelCaption.Text = Device.Mode switch
             {
                 UiMode.NoiseCanceling => "NC の強さ",
-                UiMode.Transparent or UiMode.Attention => "外音の強さ",
+                UiMode.Transparent => "外音の強さ",
                 _ => "強さ",
             };
             LevelSlider.IsEnabled = connected && Device.Level is not null;

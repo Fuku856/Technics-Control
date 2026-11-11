@@ -2,8 +2,8 @@
     x:Class="TechnicsControl.App.Views.Pages.SoundModePage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <ScrollViewer>
-        <StackPanel MaxWidth="860" Padding="36,8,36,36" Spacing="16">
+    <ScrollViewer x:Name="Scroller">
+        <StackPanel x:Name="RootPanel" MaxWidth="860" Padding="36,8,36,36" Spacing="16">
             <TextBlock Text="サウンドモード" Style="{ThemeResource TitleTextBlockStyle}" />
 
             <InfoBar x:Name="StatusBar" IsClosable="False">

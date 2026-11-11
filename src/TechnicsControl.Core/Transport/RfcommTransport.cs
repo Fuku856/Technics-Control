@@ -32,21 +32,30 @@ public sealed class RfcommTransport : IRaceTransport
 
     public static async Task<RfcommTransport> ConnectAsync(ulong bluetoothAddress, CancellationToken cancellationToken = default)
     {
-        var device = await BluetoothDevice.FromBluetoothAddressAsync(bluetoothAddress).AsTask(cancellationToken)
-            ?? throw new TransportException("イヤホンが見つかりません。Windows の Bluetooth 設定でペアリングされているか確認してください。");
-
-        var services = await device.GetRfcommServicesForIdAsync(
-            RfcommServiceId.FromUuid(AirohaSppUuid), BluetoothCacheMode.Uncached).AsTask(cancellationToken);
-        if (services.Services.Count == 0)
+        RfcommDeviceService service;
+        try
         {
-            // 電源が切れているなどで取得できないときは、キャッシュから探し直す
-            services = await device.GetRfcommServicesForIdAsync(
-                RfcommServiceId.FromUuid(AirohaSppUuid), BluetoothCacheMode.Cached).AsTask(cancellationToken);
-        }
-        if (services.Services.Count == 0)
-            throw new TransportException("イヤホンの設定用サービスが見つかりません。イヤホンをケースから出して接続してください。");
+            var device = await BluetoothDevice.FromBluetoothAddressAsync(bluetoothAddress).AsTask(cancellationToken)
+                ?? throw new TransportException("イヤホンが見つかりません。Windows の Bluetooth 設定でペアリングされているか確認してください。");
 
-        var service = services.Services[0];
+            var services = await device.GetRfcommServicesForIdAsync(
+                RfcommServiceId.FromUuid(AirohaSppUuid), BluetoothCacheMode.Uncached).AsTask(cancellationToken);
+            if (services.Services.Count == 0)
+            {
+                // 電源が切れているなどで取得できないときは、キャッシュから探し直す
+                services = await device.GetRfcommServicesForIdAsync(
+                    RfcommServiceId.FromUuid(AirohaSppUuid), BluetoothCacheMode.Cached).AsTask(cancellationToken);
+            }
+            if (services.Services.Count == 0)
+                throw new TransportException("イヤホンの設定用サービスが見つかりません。イヤホンをケースから出して接続してください。");
+            service = services.Services[0];
+        }
+        catch (Exception ex) when (ex is COMException or UnauthorizedAccessException)
+        {
+            // Bluetooth がオフのときや、アプリに Bluetooth の使用が許可されていないときなど
+            throw new TransportException($"イヤホンの情報を読めませんでした（0x{ex.HResult:X8}）。Bluetooth がオンになっているか確認してください。", ex);
+        }
+
         var socket = new StreamSocket();
         try
         {

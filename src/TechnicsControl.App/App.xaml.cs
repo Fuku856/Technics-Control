@@ -21,6 +21,21 @@ public partial class App : Application
         InitializeComponent();
         // ウィンドウをすべて閉じてもトレイに常駐し続ける
         DispatcherShutdownMode = DispatcherShutdownMode.OnExplicitShutdown;
+        UnhandledException += (_, e) =>
+        {
+            ErrorLog.Write(e.Exception);
+            e.Handled = true;
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            if (e.ExceptionObject is Exception exception)
+                ErrorLog.Write(exception);
+        };
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            ErrorLog.Write(e.Exception);
+            e.SetObserved();
+        };
     }
 
     public static App Instance { get; private set; } = null!;
@@ -35,7 +50,7 @@ public partial class App : Application
 
     public MainWindow? MainWindow { get; private set; }
 
-    protected override void OnLaunched(LaunchActivatedEventArgs args)
+    protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
         var dispatcher = DispatcherQueue.GetForCurrentThread();
         Settings = SettingsStore.Load();
@@ -55,21 +70,29 @@ public partial class App : Application
         // 2 つ目の起動（スタートメニューから開き直したときなど）は、ウィンドウを開く要求として受け取る
         AppInstance.GetCurrent().Activated += (_, _) => dispatcher.TryEnqueue(ShowMainWindow);
 
+        // ホームの本体画像は、ウィンドウを出す前に読み込んでおく（出てから遅れて表示されないように）
+        await Assets.PreloadDeviceBitmapsAsync(Settings.BodyColor);
         if (!Environment.GetCommandLineArgs().Contains(StartupService.BackgroundArgument))
             ShowMainWindow();
+        else
+            // 自動起動ではウィンドウを出さない。閉じているのと同じなので「閉じているあいだは接続を切る」のタイマーを始める
+            OnUiHidden();
     }
 
     private bool IsUiVisible => MainWindow?.AppWindow.IsVisible == true || _quickPanel?.IsShown == true;
 
-    public void ShowMainWindow()
+    public void ShowMainWindow() => ShowMainWindow(hideQuickPanel: false);
+
+    public void ShowMainWindow(bool hideQuickPanel)
     {
+        if (hideQuickPanel)
+            _quickPanel?.HidePanel();
         if (MainWindow is null)
         {
             MainWindow = new MainWindow();
             Theme.Register(MainWindow);
         }
-        MainWindow.AppWindow.Show();
-        MainWindow.Activate();
+        MainWindow.BringToFront();
         OnUiShown();
     }
 
@@ -77,10 +100,22 @@ public partial class App : Application
     {
         if (_quickPanel is null)
         {
-            _quickPanel = new QuickPanelWindow();
+            try
+            {
+                _quickPanel = new QuickPanelWindow();
+            }
+            catch (Exception e)
+            {
+                // パネルを作れなくても落とさず、メインウィンドウで操作できるようにする
+                ErrorLog.Write(e);
+                ShowMainWindow();
+                return;
+            }
             Theme.Register(_quickPanel);
         }
-        if (_quickPanel.IsShown)
+        // パネル表示中にトレイアイコンを押すと、クリックより先にフォーカスが外れてパネルが閉じる。
+        // その直後のクリックは「閉じる」操作なので、開き直さない
+        if (_quickPanel.IsShown || _quickPanel.WasJustAutoHidden)
         {
             _quickPanel.HidePanel();
             return;
@@ -93,12 +128,14 @@ public partial class App : Application
 
     public void OnUiHidden()
     {
+        Device.IsUiVisible = IsUiVisible;
         if (Settings.DisconnectWhenHidden && !IsUiVisible)
             _idleTimer?.Start();
     }
 
     private void OnUiShown()
     {
+        Device.IsUiVisible = true;
         _idleTimer?.Stop();
         if (Device.Paused)
             Device.Reconnect();
