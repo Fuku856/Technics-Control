@@ -74,6 +74,9 @@ public partial class App : Application
         await Assets.PreloadDeviceBitmapsAsync(Settings.BodyColor);
         if (!Environment.GetCommandLineArgs().Contains(StartupService.BackgroundArgument))
             ShowMainWindow();
+        else
+            // 自動起動ではウィンドウを出さない。閉じているのと同じなので「閉じているあいだは接続を切る」のタイマーを始める
+            OnUiHidden();
     }
 
     private bool IsUiVisible => MainWindow?.AppWindow.IsVisible == true || _quickPanel?.IsShown == true;

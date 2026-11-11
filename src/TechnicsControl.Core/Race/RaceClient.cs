@@ -133,7 +133,13 @@ public sealed class RaceClient : IAsyncDisposable
         var waiter = new Waiter(match);
         owned.Add(waiter);
         lock (_waitersLock)
-            _waiters.Add(waiter);
+        {
+            // 受信が終わったあとに登録した待ちは誰も完了させないので、タイムアウトを待たずにすぐ失敗させる
+            if (IsClosed)
+                waiter.Completion.TrySetException(new RaceException("イヤホンとの接続が切れています。"));
+            else
+                _waiters.Add(waiter);
+        }
         return waiter;
     }
 
@@ -175,9 +181,9 @@ public sealed class RaceClient : IAsyncDisposable
             error = ex;
         }
 
-        IsClosed = true;
         lock (_waitersLock)
         {
+            IsClosed = true;
             foreach (var waiter in _waiters)
                 waiter.Completion.TrySetException(new RaceException("イヤホンとの接続が切れました。"));
             _waiters.Clear();

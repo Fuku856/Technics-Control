@@ -25,8 +25,8 @@ AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
 AppPublisher=Fuku856
-AppPublisherURL=https://github.com/Fuku856/TechnicsControl
-AppSupportURL=https://github.com/Fuku856/TechnicsControl/issues
+AppPublisherURL=https://github.com/Fuku856/Technics-Control
+AppSupportURL=https://github.com/Fuku856/Technics-Control/issues
 VersionInfoVersion={#AppVersionNumeric}
 ; 自動起動は HKCU の Run キーを使うので、ユーザー単位 (%LOCALAPPDATA%\Programs) にインストールする
 PrivilegesRequired=lowest

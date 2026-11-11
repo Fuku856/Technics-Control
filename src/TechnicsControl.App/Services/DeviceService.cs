@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.UI.Dispatching;
 using TechnicsControl.Core.Discovery;
@@ -60,6 +61,10 @@ public sealed partial class DeviceService : ObservableObject
 
     // 次の読み直しで、外音コントロールとアンビエントモードを左右から読んで比べるか（接続直後と、イヤホンのタッチ操作のあと）
     private bool _comparePartner;
+
+    // 次の読み直しでケースの電池を読むか。公式アプリと同じく、接続直後と相方がつながり直したとき（片耳をケースから出したとき）だけ読む。
+    // イヤホンが正しい値を返すのはその直後だけで、あとは不明（0xFF）になるため、定期的には読まない
+    private bool _readCradle;
 
     public DeviceService(DispatcherQueue dispatcher)
     {
@@ -179,18 +184,35 @@ public sealed partial class DeviceService : ObservableObject
     public async Task PauseAsync()
     {
         Paused = true;
-        await DisconnectAsync("接続を切っています（スマホのアプリと併用中）");
+        await DisconnectAsync(PausedMessage);
         State = ConnectionState.Paused;
     }
+
+    private const string PausedMessage = "接続を切っています（スマホのアプリと併用中）";
 
     private async Task LoopAsync(CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            if (_device is null && !Paused)
-                await TryConnectAsync(cancellationToken);
-            else if (_device is not null)
-                await RefreshAsync();
+            try
+            {
+                if (_device is null && !Paused)
+                    await TryConnectAsync(cancellationToken);
+                else if (_device is not null)
+                    await RefreshAsync();
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                // 想定外の例外でこのループが止まると、二度と再接続しなくなる。記録して切断し、次の周回でつなぎ直す
+                ErrorLog.Write(ex);
+                await DisconnectAsync($"エラーが起きたため接続し直します（{ex.Message}）");
+                State = Paused ? ConnectionState.Paused : ConnectionState.Error;
+                OnPropertyChanged(nameof(IsConnected));
+            }
 
             var interval = _device is null ? RetryInterval : IsUiVisible ? RefreshInterval : HiddenRefreshInterval;
             try
@@ -223,11 +245,31 @@ public sealed partial class DeviceService : ObservableObject
             }
             DeviceName = target.Name;
             var device = await TechnicsDevice.ConnectAsync(target.BluetoothAddress, cancellationToken);
+            // つないでいるあいだに「接続を切る」が選ばれていたら（ウィンドウを閉じて 60 秒たったなど）、つながないでおく
+            if (Paused)
+            {
+                await device.DisposeAsync();
+                State = ConnectionState.Paused;
+                StatusMessage = PausedMessage;
+                return;
+            }
             // 主側への設定が相方に届かないときの最終手段として、相方への中継を許可する（実機で動作確認済み）
             device.AllowPartnerRelaySet = true;
-            device.OutsideControlChanged += value => _dispatcher.TryEnqueue(() => OnOutsideChangedByDevice(value));
-            device.Disconnected += error => _dispatcher.TryEnqueue(() => _ = DisconnectAsync("イヤホンとの接続が切れました。再接続します…"));
+            device.OutsideControlChanged += value => _dispatcher.TryEnqueue(() =>
+            {
+                if (_device == device)
+                    OnOutsideChangedByDevice(value);
+            });
+            // 自分から切ったときや、すでにつなぎ直したあとに届いた古い接続の切断は無視する
+            device.Disconnected += error => _dispatcher.TryEnqueue(() =>
+            {
+                if (_device == device)
+                    _ = DisconnectAsync("イヤホンとの接続が切れました。再接続します…");
+            });
             _device = device;
+            // 前の接続で読んだケースの電池は使わない
+            CaseBattery = null;
+            _readCradle = true;
             State = ConnectionState.Connected;
             StatusMessage = "接続中";
             AgentIsRight = await device.IsAgentRightAsync();
@@ -240,13 +282,20 @@ public sealed partial class DeviceService : ObservableObject
             State = ex.ChannelBusy ? ConnectionState.Busy : ConnectionState.Error;
             StatusMessage = ex.Message;
         }
-        catch (Exception ex) when (ex is RaceException or TimeoutException or OperationCanceledException or IOException)
+        catch (Exception ex) when (ex is RaceException or TimeoutException or OperationCanceledException or IOException
+                                       or COMException or UnauthorizedAccessException or InvalidOperationException)
         {
             await DisconnectAsync($"接続できませんでした: {ex.Message}");
             State = ConnectionState.Error;
         }
         finally
         {
+            // 接続の途中で「接続を切る」が選ばれていたら、エラーではなく切断中として見せる
+            if (Paused && _device is null)
+            {
+                State = ConnectionState.Paused;
+                StatusMessage = PausedMessage;
+            }
             OnPropertyChanged(nameof(IsConnected));
         }
     }
@@ -260,7 +309,16 @@ public sealed partial class DeviceService : ObservableObject
             // 相方がつながっているかは主側だけで答える（中継しないので軽い）。新しくつながったら左右を比べ直す
             var hadPartner = device.HasPartner;
             if (await device.RefreshPartnerAsync() && !hadPartner)
+            {
                 _comparePartner = true;
+                _readCradle = true;
+            }
+            // ケースの電池は正しい値が返る時間が短いので、ほかより先に読む（あとの読み取りが失敗しても読み逃さない）
+            if (_readCradle)
+            {
+                _readCradle = false;
+                await ReadCradleBatteryAsync(device);
+            }
 
             // 公式アプリと同じく、ふだんは主側だけ読む（相方へはイヤホンが反映する）。
             // 左右を比べるのは接続直後とタッチ操作のあとだけ。画面からの変更は、送ったときに確かめている
@@ -297,11 +355,26 @@ public sealed partial class DeviceService : ObservableObject
             int? partner = device.HasPartner ? (await device.GetBatteryAsync(EarbudRole.Partner)).Percent : null;
             int? own = agent.Percent;
             (LeftBattery, RightBattery) = AgentIsRight ? (partner, own) : (own, partner);
-            CaseBattery = await device.GetCradleBatteryAsync();
             Codec = await device.GetCodecInfoAsync();
             return true;
         });
         DeviceStateChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// ケースの電池を読む。不明（0xFF）やエラーのときは、前に読めた値をそのまま残す（公式アプリも値を通知しないだけで、表示は変えない）。
+    /// 読めなくても、ほかの読み直しは続ける。
+    /// </summary>
+    private async Task ReadCradleBatteryAsync(TechnicsDevice device)
+    {
+        try
+        {
+            if (await device.GetCradleBatteryAsync() is { } percent)
+                CaseBattery = percent;
+        }
+        catch (Exception ex) when (ex is RaceException or TimeoutException or IndexOutOfRangeException)
+        {
+        }
     }
 
     /// <summary>
@@ -503,7 +576,9 @@ public sealed partial class DeviceService : ObservableObject
         {
             return await action(device);
         }
-        catch (Exception ex) when (ex is RaceException or TimeoutException or IOException or InvalidOperationException or ArgumentException)
+        // 応答が想定より短いとき（IndexOutOfRange／Format）や、Bluetooth の API が返すエラー（COMException）も、操作の失敗として扱う
+        catch (Exception ex) when (ex is RaceException or TimeoutException or IOException or InvalidOperationException or ArgumentException
+                                       or IndexOutOfRangeException or FormatException or COMException or UnauthorizedAccessException)
         {
             if (device.Client.IsClosed)
                 await DisconnectAsync("イヤホンとの接続が切れました。再接続します…");
